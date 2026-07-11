@@ -1,0 +1,13 @@
+---
+# ansible-lint configuration. `production` is the strictest built-in
+# profile: this is a lab, but the playbooks are written to production
+# standards on purpose.
+profile: production
+
+# Never reach out to Ansible Galaxy during lint (CI runs offline).
+offline: true
+
+exclude_paths:
+  - .git/
+  # GitHub Actions workflows are YAML but not Ansible; yamllint covers them.
+  - .github/

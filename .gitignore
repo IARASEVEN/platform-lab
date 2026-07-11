@@ -1,0 +1,32 @@
+# Terraform
+*.tfstate
+*.tfstate.*
+.terraform/
+*.tfplan
+crash.log
+# NOTE: .terraform.lock.hcl is deliberately NOT ignored — it is committed
+# to guarantee the exact provider pin (see ADR-0002).
+
+# Ansible — generated inventory (see ansible/inventory/README.md)
+ansible/inventory/hosts.yml
+# Ansible Vault — only vault.example.yml is ever committed
+**/vault.yml
+.vault-pass*
+*.retry
+
+# Go build artifacts
+exporters/ipa-cert-exporter/ipa-cert-exporter
+*.test
+coverage.out
+dist/
+
+# Claude Code — local, per-machine settings
+.claude/settings.local.json
+
+# Editors / OS
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store

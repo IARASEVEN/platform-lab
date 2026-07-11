@@ -1,0 +1,16 @@
+---
+# golangci-lint v2 configuration for exporters/ipa-cert-exporter (M4).
+# Lives at the repo root with the other lint configs; golangci-lint's
+# config discovery walks up from the Go module directory. The v2 schema is
+# not backwards compatible with v1 — keep `version: "2"`.
+version: "2"
+
+linters:
+  # The upstream "standard" set: errcheck, govet, ineffassign, staticcheck,
+  # unused. Grows only with an agreed reason, not by default.
+  default: standard
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
