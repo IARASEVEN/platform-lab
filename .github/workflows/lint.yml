@@ -1,0 +1,37 @@
+---
+# Lint pipeline: `make lint` on every push and every PR, so CI and humans
+# exercise the same interface. The Makefile lints what exists and skips —
+# loudly — what has not arrived yet; tool installs here grow with the
+# milestones (Terraform at M1, promtool at M2, golangci-lint at M4).
+name: lint
+
+# Quoted so yamllint does not read the key as a boolean.
+"on":
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: make lint
+    runs-on: ubuntu-latest
+    env:
+      YAMLLINT_VERSION: 1.38.0
+      ANSIBLE_LINT_VERSION: 26.6.0
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install linters
+        run: >-
+          pip install
+          "yamllint==${YAMLLINT_VERSION}"
+          "ansible-lint==${ANSIBLE_LINT_VERSION}"
+
+      - name: Lint
+        run: make lint

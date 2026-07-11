@@ -1,0 +1,22 @@
+---
+# Example inventory. The real hosts.yml is generated from Terraform state
+# via `make inventory` and is gitignored. All values here are the lab's
+# synthetic, public-by-design addressing (see ADR-0003).
+all:
+  children:
+    identity:
+      hosts:
+        ipa-01.platform.internal:
+          ansible_host: 192.168.60.10
+        idp-01.platform.internal:
+          ansible_host: 192.168.60.30
+    observability:
+      hosts:
+        obs-01.platform.internal:
+          ansible_host: 192.168.60.20
+    apps:
+      hosts:
+        app-01.platform.internal:
+          ansible_host: 192.168.60.40
+        client-01.platform.internal:
+          ansible_host: 192.168.60.50
