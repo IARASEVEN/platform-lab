@@ -1,3 +1,15 @@
 ---
 # common/tasks/selinux.yml — Configure SELinux enforcing.
-# Stub: implemented in M1.2.
+# Rocky 9 GenericCloud already ships enforcing/targeted; asserting it here
+# corrects drift instead of trusting the image.
+- name: Ensure SELinux python bindings and policy tooling are present
+  ansible.builtin.dnf:
+    name:
+      - python3-libselinux
+      - python3-policycoreutils
+    state: present
+
+- name: Set SELinux to enforcing with the targeted policy
+  ansible.posix.selinux:
+    state: enforcing
+    policy: targeted

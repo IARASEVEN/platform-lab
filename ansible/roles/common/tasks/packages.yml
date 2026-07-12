@@ -1,3 +1,12 @@
 ---
 # common/tasks/packages.yml — Install required packages.
-# Stub: implemented in M1.2.
+- name: Install common packages
+  ansible.builtin.dnf:
+    name: "{{ common_packages }}"
+    state: present
+
+- name: Enable and start qemu-guest-agent
+  ansible.builtin.systemd_service:
+    name: qemu-guest-agent
+    enabled: true
+    state: started

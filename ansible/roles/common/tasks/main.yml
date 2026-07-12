@@ -1,0 +1,22 @@
+---
+# Baseline shared by every guest regardless of profile. packages.yml runs
+# early so later subsystems find their tools in place.
+- name: Set hostname from inventory
+  ansible.builtin.import_tasks: hostname.yml
+  tags: [hostname]
+
+- name: Install common packages
+  ansible.builtin.import_tasks: packages.yml
+  tags: [packages]
+
+- name: Configure SELinux
+  ansible.builtin.import_tasks: selinux.yml
+  tags: [selinux]
+
+- name: Configure firewalld
+  ansible.builtin.import_tasks: firewalld.yml
+  tags: [firewalld]
+
+- name: Configure chrony
+  ansible.builtin.import_tasks: chrony.yml
+  tags: [chrony]

@@ -1,0 +1,29 @@
+---
+# Baseline toolbox for every guest. RHEL-family package names: bind-utils
+# and vim-enhanced are what other distros call bind-tools and vim.
+common_packages:
+  - vim-enhanced
+  - git
+  - curl
+  - bind-utils
+  - openldap-clients
+  - sssd
+  - realmd
+  - krb5-workstation
+  - qemu-guest-agent
+
+# Identity-stack firewall baseline, expressed as firewalld's predefined
+# services rather than raw ports. Together they cover the M1 port list:
+# dns 53/tcp+udp, kerberos 88/tcp+udp, ldap 389/tcp, ldaps 636/tcp,
+# ntp 123/udp.
+common_firewall_services:
+  - dns
+  - kerberos
+  - ldap
+  - ldaps
+  - ntp
+
+# Upstream time source. FreeIPA can serve time to the lab later; until
+# then every guest syncs straight to the Rocky pool.
+common_ntp_pools:
+  - 2.rocky.pool.ntp.org

@@ -1,0 +1,10 @@
+---
+# Ansible collection dependencies. Exact pins, same philosophy as the
+# Terraform provider (see CLAUDE.md): upgrades are deliberate, not drift.
+# Install locally and in CI with:
+#
+#   ansible-galaxy collection install -r ansible/requirements.yml
+#
+collections:
+  - name: ansible.posix
+    version: 2.2.0

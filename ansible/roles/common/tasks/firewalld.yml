@@ -1,3 +1,23 @@
 ---
 # common/tasks/firewalld.yml — Configure firewalld rules.
-# Stub: implemented in M1.2.
+# GenericCloud images do not ship firewalld at all — install before enable.
+- name: Ensure firewalld is installed
+  ansible.builtin.dnf:
+    name: firewalld
+    state: present
+
+- name: Enable and start firewalld
+  ansible.builtin.systemd_service:
+    name: firewalld
+    enabled: true
+    state: started
+
+# Baseline for the whole lab, clients included. If it turns out only
+# ipa-01 should expose the server ports, this list moves to group_vars.
+- name: Open identity-stack firewall services
+  ansible.posix.firewalld:
+    service: "{{ item }}"
+    permanent: true
+    immediate: true
+    state: enabled
+  loop: "{{ common_firewall_services }}"

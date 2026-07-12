@@ -33,5 +33,10 @@ jobs:
           "yamllint==${YAMLLINT_VERSION}"
           "ansible-lint==${ANSIBLE_LINT_VERSION}"
 
+      # ansible-lint resolves module FQCNs against installed collections;
+      # without these, syntax-check reports unknown-module.
+      - name: Install Ansible collections
+        run: ansible-galaxy collection install -r ansible/requirements.yml
+
       - name: Lint
         run: make lint
