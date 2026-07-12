@@ -1,0 +1,17 @@
+# Copy to terraform.tfvars and adjust. terraform.tfvars is gitignored — this
+# example file is the committed reference, same pattern as vault.example.yml.
+
+# Only ssh_public_key_path is required; every other variable already has a
+# default matching the CLAUDE.md / ADR-0003 tables and only needs overriding
+# if you are deliberately deviating from them.
+ssh_public_key_path = "~/.ssh/id_ed25519.pub"
+
+# dns_domain            = "platform.internal"
+# kerberos_realm        = "PLATFORM.INTERNAL"
+# network_name          = "platform-lab"
+# network_cidr          = "192.168.60.0/24"
+# network_gateway       = "192.168.60.1"
+# ipa01_ip              = "192.168.60.10"
+# client01_ip           = "192.168.60.50"
+# rocky_image_url       = "https://dl.rockylinux.org/pub/rocky/9/images/x86_64/Rocky-9-GenericCloud-Base-9.8-20260525.0.x86_64.qcow2"
+# bootstrap_dns_servers = ["1.1.1.1", "9.9.9.9"]

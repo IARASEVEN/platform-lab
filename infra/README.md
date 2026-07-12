@@ -215,7 +215,10 @@ resource "libvirt_domain" "example" {
     type         = "hvm"
     type_arch    = "x86_64"
     type_machine = "q35"
-    boot_devices = ["hd", "network"]
+    boot_devices = [
+      { dev = "hd" },
+      { dev = "network" }
+    ]
   }
 
   devices = {
@@ -264,3 +267,9 @@ resource "libvirt_domain" "example" {
 Also note: the domain's read-only `id` is a **Number** in 0.9.8 (it was the
 UUID string in 0.8); the UUID is the separate `uuid` attribute. `running` and
 `autostart` keep their 0.8 names.
+
+⚠️ **Correction (confirmed against `terraform validate` at M1.1):** the
+registry's own doc-verbatim example above is wrong. `os.boot_devices` is a
+list of **objects** (`{ dev = "hd" }`), not a list of strings (`["hd"]`).
+`terraform validate` fails with "boot_devices in os block expects objects,
+not strings" against the bare-string form. Fixed in the example above.

@@ -1,0 +1,45 @@
+output "ipa01_ip" {
+  description = "Static IP of ipa-01."
+  value       = var.ipa01_ip
+}
+
+output "client01_ip" {
+  description = "Static IP of client-01."
+  value       = var.client01_ip
+}
+
+output "ipa01_fqdn" {
+  description = "FQDN of ipa-01."
+  value       = "ipa-01.${var.dns_domain}"
+}
+
+output "client01_fqdn" {
+  description = "FQDN of client-01."
+  value       = "client-01.${var.dns_domain}"
+}
+
+output "ipa01_ssh" {
+  description = "SSH connection string for ipa-01."
+  value       = "ssh rocky@${var.ipa01_ip}"
+}
+
+output "client01_ssh" {
+  description = "SSH connection string for client-01."
+  value       = "ssh rocky@${var.client01_ip}"
+}
+
+output "vms" {
+  description = "Structured VM inventory (hostname -> ip/fqdn/profile), consumed by `make inventory` to generate ansible/inventory/hosts.yml."
+  value = {
+    ipa-01 = {
+      ip      = var.ipa01_ip
+      fqdn    = "ipa-01.${var.dns_domain}"
+      profile = "identity"
+    }
+    client-01 = {
+      ip      = var.client01_ip
+      fqdn    = "client-01.${var.dns_domain}"
+      profile = "apps"
+    }
+  }
+}
