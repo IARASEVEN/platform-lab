@@ -1,0 +1,35 @@
+---
+# hbac_setup/tasks/verify.yml — Prove deny-by-default from both sides.
+# Read-only, runs on every play. hbactest evaluates the live rule set the
+# same way SSSD will at login, so this is the demo in miniature: alice
+# granted on the client, bob denied — denied because no rule matches, not
+# because a deny rule exists. failed_when keys on the verdict string, not
+# the exit code, because hbactest signals a deny through both.
+- name: Read the allow_all rule state
+  ansible.builtin.command: ipa hbacrule-show allow_all
+  register: hbac_setup_verify_allow_all
+  changed_when: false
+
+- name: Assert allow_all is disabled
+  ansible.builtin.assert:
+    that:
+      - "'Enabled: False' in hbac_setup_verify_allow_all.stdout"
+    fail_msg: allow_all is still enabled — deny-by-default is not in force.
+
+- name: Evaluate alice's SSH access to the client
+  ansible.builtin.command: >-
+    ipa hbactest --user={{ hbac_setup_rule_user }}
+    --host={{ hbac_setup_rule_host }}
+    --service={{ hbac_setup_rule_service }}
+  register: hbac_setup_verify_allowed
+  changed_when: false
+  failed_when: "'Access granted: True' not in hbac_setup_verify_allowed.stdout"
+
+- name: Evaluate bob's SSH access to the client
+  ansible.builtin.command: >-
+    ipa hbactest --user={{ hbac_setup_denied_user }}
+    --host={{ hbac_setup_rule_host }}
+    --service={{ hbac_setup_rule_service }}
+  register: hbac_setup_verify_denied
+  changed_when: false
+  failed_when: "'Access granted: False' not in hbac_setup_verify_denied.stdout"

@@ -1,0 +1,35 @@
+---
+# Domain and realm mirror ADR-0003, same single-source-of-truth story as
+# the other identity roles. The realm is the domain uppercased, always.
+hbac_setup_domain: platform.internal
+hbac_setup_realm: "{{ hbac_setup_domain | upper }}"
+
+# Every ipa command below needs an admin ticket. The password comes from
+# Ansible Vault; preflight.yml asserts it is real.
+hbac_setup_admin_password: "{{ vault_freeipa_admin_password }}"
+
+# Demo users proving deny-by-default from both sides: alice gets exactly
+# one grant (the rule below), bob gets none — his denial is the absence
+# of a rule, not a deny rule. They share one final password from the
+# vault; the throwaway initial password is generated per run.
+hbac_setup_demo_password: "{{ vault_demo_user_password }}"
+hbac_setup_demo_users:
+  - uid: alice
+    first: Alice
+    last: Demo
+  - uid: bob
+    first: Bob
+    last: Demo
+hbac_setup_denied_user: bob
+
+# The single allow rule: alice may SSH to the client host, nothing else.
+# The host comes from the generated `client` service group, never
+# hardcoded.
+hbac_setup_rule_name: allow_alice_ssh_client01
+hbac_setup_rule_user: alice
+hbac_setup_rule_host: "{{ groups['client'] | first }}"
+hbac_setup_rule_service: sshd
+
+# Private ccache for the password-activation kinit so the admin ticket in
+# the default ccache survives; main.yml's always block removes the file.
+hbac_setup_activation_ccache: /tmp/krb5cc_hbac_setup_activation

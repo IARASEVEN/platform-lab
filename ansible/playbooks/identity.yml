@@ -29,3 +29,14 @@
     - ../vault.yml
   roles:
     - freeipa_client
+
+# Must run after the client play: the allow rule references client-01's
+# host entry, which only exists once enrollment has run.
+- name: Enforce HBAC deny-by-default (M1.5)
+  hosts: ipa
+  become: true
+  gather_facts: true
+  vars_files:
+    - ../vault.yml
+  roles:
+    - hbac_setup

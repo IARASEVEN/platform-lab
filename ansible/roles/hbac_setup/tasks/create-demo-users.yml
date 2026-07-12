@@ -1,0 +1,66 @@
+---
+# hbac_setup/tasks/create-demo-users.yml — alice and bob, the two sides
+# of the deny-by-default demo.
+#
+# FreeIPA expires admin-set passwords at first use, which would turn the
+# demo's first SSH login into an interactive password-change prompt. So
+# each user is created with a random throwaway initial password and
+# immediately activated: a scripted kinit walks the expired-password
+# change to the final vault password. Both steps run only when the user
+# was just created; a run that dies between them leaves that user with an
+# unknown initial password — recover with `ipa user-del <uid>` and
+# re-run.
+- name: Check which demo users already exist
+  ansible.builtin.command: ipa user-show {{ item.uid }}
+  loop: "{{ hbac_setup_demo_users }}"
+  loop_control:
+    label: "{{ item.uid }}"
+  register: hbac_setup_user_show
+  changed_when: false
+  failed_when: hbac_setup_user_show.rc not in [0, 2]
+
+# lookup(password) pointed at /dev/null generates without persisting.
+- name: Generate a throwaway initial password for this run
+  ansible.builtin.set_fact:
+    hbac_setup_initial_password: >-
+      {{ lookup('ansible.builtin.password', '/dev/null',
+                length=24, chars=['ascii_letters', 'digits']) }}
+  no_log: true
+
+# user-add --password prompts twice (enter + verify): two stdin lines.
+- name: Create the missing demo users
+  ansible.builtin.command:
+    argv:
+      - ipa
+      - user-add
+      - "{{ item.item.uid }}"
+      - "--first={{ item.item.first }}"
+      - "--last={{ item.item.last }}"
+      - --password
+    stdin: "{{ hbac_setup_initial_password }}\n{{ hbac_setup_initial_password }}"
+  loop: "{{ hbac_setup_user_show.results }}"
+  loop_control:
+    label: "{{ item.item.uid }}"
+  when: item.rc == 2
+  changed_when: true
+  no_log: true
+
+# kinit against an expired password prompts three times: current password,
+# new password, new password again. The private ccache keeps the admin
+# ticket in the default ccache untouched. Gated on the same condition as
+# creation — "the user was absent when this run started" — because only
+# a user created above holds this run's initial password.
+- name: Activate the new users' passwords (expired-password kinit change)
+  ansible.builtin.command:
+    argv:
+      - kinit
+      - "{{ item.item.uid }}@{{ hbac_setup_realm }}"
+    stdin: "{{ hbac_setup_initial_password }}\n{{ hbac_setup_demo_password }}\n{{ hbac_setup_demo_password }}"
+  environment:
+    KRB5CCNAME: "{{ hbac_setup_activation_ccache }}"
+  loop: "{{ hbac_setup_user_show.results }}"
+  loop_control:
+    label: "{{ item.item.uid }}"
+  when: item.rc == 2
+  changed_when: true
+  no_log: true

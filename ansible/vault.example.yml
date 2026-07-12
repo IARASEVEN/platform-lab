@@ -9,3 +9,5 @@
 # (**/vault.yml, .vault-pass*). Only this placeholder file is committed.
 vault_freeipa_dm_password: "CHANGE_ME_32_chars_min"
 vault_freeipa_admin_password: "CHANGE_ME_32_chars_min"
+# Final password shared by the alice/bob HBAC demo users (hbac_setup role).
+vault_demo_user_password: "CHANGE_ME_32_chars_min"

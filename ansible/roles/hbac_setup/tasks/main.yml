@@ -1,0 +1,57 @@
+---
+# HBAC deny-by-default (M1 contract). FreeIPA ships allow_all enabled —
+# every user may use every PAM service on every enrolled host. This role
+# replaces that with explicit grants. Order matters: the demo users and
+# alice's allow rule exist BEFORE allow_all is disabled, so there is no
+# window where the lab is all-deny with no rules, and verify runs last,
+# against the final state.
+#
+# Every ipa command needs an admin ticket, so the imports run inside one
+# block that obtains it and always destroys it. kinit, kdestroy and the
+# ccache cleanup carry the union of the inner tags so a partial run
+# (--tags verify) still authenticates.
+- name: Run preflight checks
+  ansible.builtin.import_tasks: preflight.yml
+  tags: [preflight]
+
+- name: Configure HBAC with an admin ticket held for the duration
+  block:
+    # Password over stdin, not argv, so it never appears in a process
+    # list.
+    - name: Obtain a Kerberos ticket as admin
+      ansible.builtin.command:
+        argv:
+          - kinit
+          - "admin@{{ hbac_setup_realm }}"
+        stdin: "{{ hbac_setup_admin_password }}"
+      changed_when: false
+      no_log: true
+      tags: [users, rules, disable, verify]
+
+    - name: Create the demo users
+      ansible.builtin.import_tasks: create-demo-users.yml
+      tags: [users]
+
+    - name: Create the HBAC allow rules
+      ansible.builtin.import_tasks: create-hbac-rules.yml
+      tags: [rules]
+
+    - name: Disable the allow_all rule
+      ansible.builtin.import_tasks: disable-allow-all.yml
+      tags: [disable]
+
+    - name: Verify the HBAC state
+      ansible.builtin.import_tasks: verify.yml
+      tags: [verify]
+  always:
+    - name: Destroy the admin ticket
+      ansible.builtin.command: kdestroy -A
+      changed_when: false
+      failed_when: false
+      tags: [users, rules, disable, verify]
+
+    - name: Remove the password-activation ccache
+      ansible.builtin.file:
+        path: "{{ hbac_setup_activation_ccache }}"
+        state: absent
+      tags: [users, rules, disable, verify]

@@ -1,0 +1,26 @@
+---
+# hbac_setup/tasks/disable-allow-all.yml — The deny-by-default switch,
+# ordered last so the allow rules exist before the gate closes.
+#
+# Consequences, on purpose: IPA users — admin included — can no longer
+# SSH anywhere unless a rule grants it. kinit and the Web UI still work
+# (HBAC gates PAM on enrolled hosts, nothing else), and Ansible is
+# unaffected because it connects as the local rocky user, which
+# SSSD/HBAC does not govern.
+#
+# FreeIPA's other default rule, allow_systemd-user, stays enabled: it
+# matches only the systemd-user PAM service (session scaffolding, not a
+# login path), grants no SSH, and disabling it breaks systemd user
+# sessions for everyone — alice included.
+# Check-then-act: this ipa CLI version exits 0 from hbacrule-disable even
+# when the rule is already disabled (observed live), so the command's exit
+# code cannot report change — the rule's prior state does.
+- name: Read the allow_all rule state
+  ansible.builtin.command: ipa hbacrule-show allow_all
+  register: hbac_setup_allow_all_state
+  changed_when: false
+
+- name: Disable the allow_all HBAC rule
+  ansible.builtin.command: ipa hbacrule-disable allow_all
+  when: "'Enabled: True' in hbac_setup_allow_all_state.stdout"
+  changed_when: true

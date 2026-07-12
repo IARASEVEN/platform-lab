@@ -1,0 +1,58 @@
+---
+# hbac_setup/tasks/create-hbac-rules.yml — The single allow rule: alice
+# may SSH to the client host. Nothing here mentions bob, and that is the
+# point: once allow_all is disabled, denial is the default state and
+# bob's lack of a rule IS his policy.
+#
+# The rule itself is check-then-add (rc 2 = NotFound); the member
+# additions instead tolerate the "already a member" error the ipa CLI
+# raises on re-runs — pre-checking membership would mean parsing rule
+# output for three different member types.
+- name: Check whether the allow rule exists
+  ansible.builtin.command: ipa hbacrule-show {{ hbac_setup_rule_name }}
+  register: hbac_setup_rule_show
+  changed_when: false
+  failed_when: hbac_setup_rule_show.rc not in [0, 2]
+
+- name: Create the allow rule
+  ansible.builtin.command:
+    argv:
+      - ipa
+      - hbacrule-add
+      - "{{ hbac_setup_rule_name }}"
+      - "--desc={{ hbac_setup_rule_user }} may SSH to {{ hbac_setup_rule_host }} — every other access is denied"
+  when: hbac_setup_rule_show.rc == 2
+  changed_when: true
+
+- name: Add the demo user to the rule
+  ansible.builtin.command: >-
+    ipa hbacrule-add-user {{ hbac_setup_rule_name }}
+    --users={{ hbac_setup_rule_user }}
+  register: hbac_setup_rule_add_user
+  changed_when: hbac_setup_rule_add_user.rc == 0
+  failed_when: >-
+    hbac_setup_rule_add_user.rc != 0
+    and 'already a member' not in
+    (hbac_setup_rule_add_user.stdout + hbac_setup_rule_add_user.stderr)
+
+- name: Add the client host to the rule
+  ansible.builtin.command: >-
+    ipa hbacrule-add-host {{ hbac_setup_rule_name }}
+    --hosts={{ hbac_setup_rule_host }}
+  register: hbac_setup_rule_add_host
+  changed_when: hbac_setup_rule_add_host.rc == 0
+  failed_when: >-
+    hbac_setup_rule_add_host.rc != 0
+    and 'already a member' not in
+    (hbac_setup_rule_add_host.stdout + hbac_setup_rule_add_host.stderr)
+
+- name: Add the SSH service to the rule
+  ansible.builtin.command: >-
+    ipa hbacrule-add-service {{ hbac_setup_rule_name }}
+    --hbacsvcs={{ hbac_setup_rule_service }}
+  register: hbac_setup_rule_add_svc
+  changed_when: hbac_setup_rule_add_svc.rc == 0
+  failed_when: >-
+    hbac_setup_rule_add_svc.rc != 0
+    and 'already a member' not in
+    (hbac_setup_rule_add_svc.stdout + hbac_setup_rule_add_svc.stderr)
