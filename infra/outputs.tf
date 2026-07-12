@@ -8,6 +8,11 @@ output "client01_ip" {
   value       = var.client01_ip
 }
 
+output "idp01_ip" {
+  description = "Static IP of idp-01."
+  value       = var.idp01_ip
+}
+
 output "ipa01_fqdn" {
   description = "FQDN of ipa-01."
   value       = "ipa-01.${var.dns_domain}"
@@ -18,6 +23,11 @@ output "client01_fqdn" {
   value       = "client-01.${var.dns_domain}"
 }
 
+output "idp01_fqdn" {
+  description = "FQDN of idp-01."
+  value       = "idp-01.${var.dns_domain}"
+}
+
 output "ipa01_ssh" {
   description = "SSH connection string for ipa-01."
   value       = "ssh rocky@${var.ipa01_ip}"
@@ -26,6 +36,11 @@ output "ipa01_ssh" {
 output "client01_ssh" {
   description = "SSH connection string for client-01."
   value       = "ssh rocky@${var.client01_ip}"
+}
+
+output "idp01_ssh" {
+  description = "SSH connection string for idp-01."
+  value       = "ssh rocky@${var.idp01_ip}"
 }
 
 output "vms" {
@@ -41,6 +56,13 @@ output "vms" {
     client-01 = {
       ip      = var.client01_ip
       fqdn    = "client-01.${var.dns_domain}"
+      profile = "identity"
+    }
+    # idp-01 (Keycloak, M3) is identity: it exists to federate against
+    # ipa-01 and starts and stops with that profile.
+    idp-01 = {
+      ip      = var.idp01_ip
+      fqdn    = "idp-01.${var.dns_domain}"
       profile = "identity"
     }
   }

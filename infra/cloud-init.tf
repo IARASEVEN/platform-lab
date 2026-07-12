@@ -116,3 +116,57 @@ resource "libvirt_volume" "client01_cloudinit" {
     }
   }
 }
+
+resource "libvirt_cloudinit_disk" "idp01" {
+  name = "idp-01-cloudinit.iso"
+
+  user_data = <<-EOT
+    #cloud-config
+    hostname: idp-01
+    fqdn: idp-01.${var.dns_domain}
+    manage_etc_hosts: true
+    users:
+      - default
+    ssh_authorized_keys:
+      - ${trimspace(file(var.ssh_public_key_path))}
+    packages:
+      - qemu-guest-agent
+    runcmd:
+      - systemctl enable --now qemu-guest-agent
+  EOT
+
+  meta_data = yamlencode({
+    instance-id    = "idp-01"
+    local-hostname = "idp-01"
+  })
+
+  network_config = yamlencode({
+    version = 2
+    ethernets = {
+      eth0 = {
+        match = {
+          macaddress = local.idp01_mac
+        }
+        set-name  = "eth0"
+        addresses = ["${var.idp01_ip}/24"]
+        gateway4  = var.network_gateway
+        nameservers = {
+          # ipa-01 is the sole authoritative DNS server (ADR-0003) and is
+          # already installed by the time idp-01 is configured at M3.
+          addresses = [var.ipa01_ip]
+        }
+      }
+    }
+  })
+}
+
+resource "libvirt_volume" "idp01_cloudinit" {
+  name = "idp-01-cloudinit.iso"
+  pool = libvirt_pool.platform_lab.name
+
+  create = {
+    content = {
+      url = libvirt_cloudinit_disk.idp01.path
+    }
+  }
+}

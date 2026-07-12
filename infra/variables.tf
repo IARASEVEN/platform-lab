@@ -35,9 +35,15 @@ variable "ipa01_ip" {
 }
 
 variable "client01_ip" {
-  description = "Static IP for client-01 (apps profile, M1)."
+  description = "Static IP for client-01 (identity profile, M1)."
   type        = string
   default     = "192.168.60.50"
+}
+
+variable "idp01_ip" {
+  description = "Static IP for idp-01, the Keycloak + PostgreSQL host (identity profile, M3)."
+  type        = string
+  default     = "192.168.60.30"
 }
 
 variable "rocky_image_url" {
