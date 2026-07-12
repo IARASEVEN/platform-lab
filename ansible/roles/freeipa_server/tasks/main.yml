@@ -1,0 +1,25 @@
+---
+# FreeIPA server on ipa-01 — bare-metal via ipa-server-install (ADR-0005),
+# the only authoritative DNS for platform.internal (ADR-0003). Order
+# matters: preflight fails fast before the ~400-package install, and the
+# firewall opens before the installer starts services so the server is
+# reachable the moment it exists.
+- name: Run preflight checks
+  ansible.builtin.import_tasks: preflight.yml
+  tags: [preflight]
+
+- name: Install FreeIPA server packages
+  ansible.builtin.import_tasks: packages.yml
+  tags: [packages]
+
+- name: Open FreeIPA firewall services
+  ansible.builtin.import_tasks: firewalld.yml
+  tags: [firewalld]
+
+- name: Run ipa-server-install
+  ansible.builtin.import_tasks: install.yml
+  tags: [install]
+
+- name: Verify the FreeIPA installation
+  ansible.builtin.import_tasks: verify.yml
+  tags: [verify]

@@ -1,0 +1,11 @@
+---
+# freeipa_server/tasks/firewalld.yml — Open the FreeIPA server services.
+# Same idiom as common: firewalld's predefined services, never raw ports.
+# common already guarantees firewalld itself is installed and running.
+- name: Open FreeIPA server firewall services
+  ansible.posix.firewalld:
+    service: "{{ item }}"
+    permanent: true
+    immediate: true
+    state: enabled
+  loop: "{{ freeipa_server_firewall_services }}"

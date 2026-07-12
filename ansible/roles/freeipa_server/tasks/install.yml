@@ -1,0 +1,35 @@
+---
+# freeipa_server/tasks/install.yml — Run ipa-server-install, once.
+#
+# /etc/ipa/default.conf is written by a successful install and is the
+# idempotency guard: re-runs skip straight to verify. If an install died
+# halfway, roll it back with `ipa-server-install --uninstall` on the guest
+# before re-running this role.
+#
+# no_log because the Directory Manager and admin passwords are in the
+# argv. The cost is silence on failure — diagnostics live in
+# /var/log/ipaserver-install.log on the guest.
+#
+# --no-ntp: chrony is owned by the common role.
+# --auto-reverse: creates 60.168.192.in-addr.arpa so PTR lookups work.
+# Expect 10–20 minutes on this VM; that is normal.
+- name: Run ipa-server-install (unattended, 10-20 minutes)
+  ansible.builtin.command:
+    argv: "{{ freeipa_server_install_base_argv + freeipa_server_install_forwarder_argv }}"
+    creates: /etc/ipa/default.conf
+  vars:
+    freeipa_server_install_base_argv:
+      - ipa-server-install
+      - --unattended
+      - "--realm={{ freeipa_server_realm }}"
+      - "--domain={{ freeipa_server_domain }}"
+      - "--hostname={{ inventory_hostname }}"
+      - "--ip-address={{ ansible_host }}"
+      - "--ds-password={{ freeipa_server_dm_password }}"
+      - "--admin-password={{ freeipa_server_admin_password }}"
+      - --setup-dns
+      - --auto-reverse
+      - --no-ntp
+    freeipa_server_install_forwarder_argv: >-
+      {{ freeipa_server_dns_forwarders | map('regex_replace', '^', '--forwarder=') | list }}
+  no_log: true

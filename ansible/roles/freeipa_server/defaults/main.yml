@@ -1,0 +1,40 @@
+---
+# DNS domain and Kerberos realm are fixed by ADR-0003 and defined once as
+# Terraform variables. Ansible cannot read those directly, so these defaults
+# mirror them until `make inventory` (later in M1) emits group_vars from
+# `terraform output -json`. The realm is the domain uppercased, always.
+freeipa_server_domain: platform.internal
+freeipa_server_realm: "{{ freeipa_server_domain | upper }}"
+
+# LDAP base DN derived from the domain (platform.internal ->
+# dc=platform,dc=internal). Used by the GSSAPI ldapsearch verification.
+freeipa_server_basedn: "dc={{ freeipa_server_domain.split('.') | join(',dc=') }}"
+
+# Secrets come from Ansible Vault (ansible/vault.yml, gitignored — see
+# vault.example.yml). preflight.yml asserts these exist and were changed
+# from the placeholder before anything touches the host.
+freeipa_server_admin_password: "{{ vault_freeipa_admin_password }}"
+freeipa_server_dm_password: "{{ vault_freeipa_dm_password }}"
+
+# Upstream resolvers BIND forwards to for everything outside
+# platform.internal. Mirrors infra's bootstrap_dns_servers: the resolvers
+# ipa-01 used at first boot keep serving it after install, one hop away.
+freeipa_server_dns_forwarders:
+  - 1.1.1.1
+  - 9.9.9.9
+
+# RHEL-family package names (ADR-0005). Upstream calls these freeipa-*;
+# Rocky follows RHEL and calls them ipa-*. Plain dnf: RHEL 9 dropped the
+# idm module stream RHEL 8 used, the packages live directly in AppStream.
+freeipa_server_packages:
+  - ipa-server
+  - ipa-server-dns
+
+# firewalld's predefined freeipa-4 service covers HTTP/S, LDAP/S, Kerberos
+# and kpasswd — the set the RHEL 9 IdM install docs prescribe. dns and ntp
+# overlap with common's baseline; listed anyway so the server role is
+# self-contained about what it exposes.
+freeipa_server_firewall_services:
+  - freeipa-4
+  - dns
+  - ntp

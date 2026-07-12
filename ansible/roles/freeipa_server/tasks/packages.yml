@@ -1,0 +1,9 @@
+---
+# freeipa_server/tasks/packages.yml — Install the FreeIPA server packages.
+# Pulls in the whole stack (389-ds, MIT Kerberos, BIND, Dogtag, Apache,
+# certmonger); the first run moves several hundred packages and takes a
+# few minutes.
+- name: Install FreeIPA server packages
+  ansible.builtin.dnf:
+    name: "{{ freeipa_server_packages }}"
+    state: present

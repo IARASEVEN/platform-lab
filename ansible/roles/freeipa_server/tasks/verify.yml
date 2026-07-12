@@ -1,0 +1,73 @@
+---
+# freeipa_server/tasks/verify.yml — Prove the installation actually works.
+# Read-only, runs on every play so drift fails loudly instead of rotting:
+# ipactl gates on the services, dig on the DNS zone, the resolv.conf assert
+# on NetworkManager quietly reverting the resolver to the bootstrap DNS
+# servers after a reboot, and kinit + ldapsearch on Kerberos and LDAP
+# end to end.
+- name: Check all IPA services are running
+  ansible.builtin.command: ipactl status
+  changed_when: false
+
+- name: Resolve own A record against the local BIND
+  ansible.builtin.command: dig +short @127.0.0.1 {{ inventory_hostname }} A
+  register: freeipa_server_dig
+  changed_when: false
+
+- name: Assert DNS answers with the static address
+  ansible.builtin.assert:
+    that:
+      - freeipa_server_dig.stdout == ansible_host
+    fail_msg: >-
+      BIND did not resolve {{ inventory_hostname }} to {{ ansible_host }}
+      (got: "{{ freeipa_server_dig.stdout }}").
+
+- name: Read the resolver configuration
+  ansible.builtin.slurp:
+    src: /etc/resolv.conf
+  register: freeipa_server_resolv
+
+- name: Assert the host resolves via its own BIND
+  ansible.builtin.assert:
+    that:
+      - "'nameserver 127.0.0.1' in (freeipa_server_resolv.content | b64decode)"
+    fail_msg: >-
+      /etc/resolv.conf no longer points at 127.0.0.1 — NetworkManager has
+      likely re-rendered it from the bootstrap DNS connection profile.
+
+- name: Verify Kerberos and LDAP end to end
+  block:
+    # Password over stdin, not argv, so it never appears in a process list.
+    - name: Obtain a Kerberos ticket as admin
+      ansible.builtin.command:
+        argv:
+          - kinit
+          - "admin@{{ freeipa_server_realm }}"
+        stdin: "{{ freeipa_server_admin_password }}"
+      changed_when: false
+      no_log: true
+
+    # GSSAPI bind with the ticket above: one search exercising the KDC,
+    # 389-ds and the SASL mapping in a single round trip.
+    - name: Search LDAP for the admin account over GSSAPI
+      ansible.builtin.command:
+        argv:
+          - ldapsearch
+          - -Y
+          - GSSAPI
+          - -H
+          - "ldap://{{ inventory_hostname }}"
+          - -b
+          - "cn=users,cn=accounts,{{ freeipa_server_basedn }}"
+          - (uid=admin)
+          - uid
+      register: freeipa_server_ldapsearch
+      changed_when: false
+      failed_when: >-
+        freeipa_server_ldapsearch.rc != 0
+        or 'numEntries: 1' not in freeipa_server_ldapsearch.stdout
+  always:
+    - name: Destroy the verification ticket
+      ansible.builtin.command: kdestroy -A
+      changed_when: false
+      failed_when: false
