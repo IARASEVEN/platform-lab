@@ -10,7 +10,12 @@ resource "libvirt_cloudinit_disk" "ipa01" {
     #cloud-config
     hostname: ipa-01
     fqdn: ipa-01.${var.dns_domain}
-    manage_etc_hosts: true
+    # Deliberately false, and only on this host: cloud-init's RHEL-family
+    # /etc/hosts template maps the FQDN to 127.0.0.1 and ::1 on every boot,
+    # and ipa-server-install refuses to install when the hostname resolves
+    # to a loopback address. The freeipa_server Ansible role owns this
+    # host's /etc/hosts entry instead.
+    manage_etc_hosts: false
     users:
       - default
     ssh_authorized_keys:
