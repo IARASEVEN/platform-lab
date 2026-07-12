@@ -4,11 +4,15 @@
 .terraform/
 *.tfplan
 crash.log
+terraform.tfvars
 # NOTE: .terraform.lock.hcl is deliberately NOT ignored — it is committed
 # to guarantee the exact provider pin (see ADR-0002).
+# NOTE: terraform.tfvars.example IS committed — it is the readable template,
+# same pattern as vault.example.yml.
 
 # Ansible — generated inventory (see ansible/inventory/README.md)
 ansible/inventory/hosts.yml
+ansible/inventory/hosts.yml.tmp
 # Ansible Vault — only vault.example.yml is ever committed
 **/vault.yml
 .vault-pass*

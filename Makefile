@@ -4,6 +4,15 @@
 #   TF=tofu make <target>
 TF ?= terraform
 
+# Recipes run under bash with pipefail so a failing `terraform output`
+# cannot silently feed an empty document to the inventory generator.
+SHELL := /bin/bash
+.SHELLFLAGS := -o pipefail -c
+
+# ansible.cfg reads the vault password from .vault-pass (gitignored). On a
+# machine without that file, fall back to prompting for it.
+ASK_VAULT = $(if $(wildcard .vault-pass),,--ask-vault-pass)
+
 .DEFAULT_GOAL := help
 
 # Scaffold phase: targets exist so the interface is stable from day one,
@@ -21,8 +30,8 @@ help: ## List all targets
 check-tools: ## Verify terraform/ansible/go are present and at pinned versions (M1)
 	$(call not-yet,M1)
 
-identity: ## Provision + configure the identity profile (M1)
-	$(call not-yet,M1)
+identity: inventory ## Configure the identity profile (inventory + identity playbook)
+	ansible-playbook -i ansible/inventory/hosts.yml ansible/playbooks/identity.yml $(ASK_VAULT)
 
 observability: ## Provision + configure observability (M2)
 	$(call not-yet,M2)
@@ -33,8 +42,13 @@ apps: ## Provision + configure apps (M3)
 all: ## Everything (M3, once all profiles exist)
 	$(call not-yet,M3)
 
-inventory: ## Regenerate ansible/inventory/hosts.yml from Terraform output (M1)
-	$(call not-yet,M1)
+# Write-then-move: if `terraform output` or jq fails, pipefail aborts the
+# recipe and any previously generated hosts.yml survives untouched.
+inventory: ## Regenerate ansible/inventory/hosts.yml from Terraform state
+	$(TF) -chdir=infra output -json \
+		| jq -r -f ansible/inventory/generate.jq > ansible/inventory/hosts.yml.tmp
+	mv ansible/inventory/hosts.yml.tmp ansible/inventory/hosts.yml
+	@echo "inventory: wrote ansible/inventory/hosts.yml"
 
 # Each lint block activates itself when its files arrive with their
 # milestone; until then it says so and moves on. If the files exist but the
