@@ -1,0 +1,8 @@
+---
+# freeipa_client/tasks/packages.yml — Install the IPA client packages.
+# Deliberately short: defaults/main.yml explains why sssd and realmd are
+# not repeated here.
+- name: Install IPA client packages
+  ansible.builtin.dnf:
+    name: "{{ freeipa_client_packages }}"
+    state: present

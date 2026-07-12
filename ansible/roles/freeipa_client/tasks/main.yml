@@ -1,0 +1,25 @@
+---
+# IPA client enrollment — the first consumer of the FreeIPA server M1.3
+# built. Order matters: preflight fails fast before packages move, the DNS
+# record lands before the installer runs (so the client's name resolves in
+# the lab's only nameserver the moment it is enrolled, ADR-0003), and
+# verify proves the enrollment end to end on every run.
+- name: Run preflight checks
+  ansible.builtin.import_tasks: preflight.yml
+  tags: [preflight]
+
+- name: Install IPA client packages
+  ansible.builtin.import_tasks: packages.yml
+  tags: [packages]
+
+- name: Publish the client's DNS records
+  ansible.builtin.import_tasks: dns.yml
+  tags: [dns]
+
+- name: Run ipa-client-install
+  ansible.builtin.import_tasks: enroll.yml
+  tags: [enroll]
+
+- name: Verify the enrollment
+  ansible.builtin.import_tasks: verify.yml
+  tags: [verify]

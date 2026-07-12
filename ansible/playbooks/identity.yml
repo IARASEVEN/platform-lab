@@ -20,3 +20,12 @@
     - ../vault.yml
   roles:
     - freeipa_server
+
+- name: Enrol the IPA client (M1.5)
+  hosts: client
+  become: true
+  gather_facts: true
+  vars_files:
+    - ../vault.yml
+  roles:
+    - freeipa_client

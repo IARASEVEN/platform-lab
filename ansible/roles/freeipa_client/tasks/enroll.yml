@@ -1,0 +1,31 @@
+---
+# freeipa_client/tasks/enroll.yml — Run ipa-client-install, once.
+#
+# /etc/ipa/default.conf is written by a successful enrollment and is the
+# idempotency guard, same contract as the server role. If an enrollment
+# died halfway, roll it back with `ipa-client-install --uninstall` on the
+# guest before re-running this role.
+#
+# no_log because the admin password is in the argv. The cost is silence on
+# failure — diagnostics live in /var/log/ipaclient-install.log on the
+# guest.
+#
+# --server + --domain pin the enrollment target instead of trusting SRV
+# discovery mid-bootstrap; SSSD still learns the SRV records for later.
+# --mkhomedir creates home directories at first login (oddjob-mkhomedir,
+# packages.yml). --no-ntp: chrony is owned by the common role, exactly as
+# on the server.
+- name: Run ipa-client-install (unattended)
+  ansible.builtin.command:
+    argv:
+      - ipa-client-install
+      - --unattended
+      - "--domain={{ freeipa_client_domain }}"
+      - "--realm={{ freeipa_client_realm }}"
+      - "--server={{ freeipa_client_server }}"
+      - "--principal={{ freeipa_client_principal }}"
+      - "--password={{ freeipa_client_admin_password }}"
+      - --mkhomedir
+      - --no-ntp
+    creates: /etc/ipa/default.conf
+  no_log: true

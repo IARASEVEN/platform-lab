@@ -1,0 +1,26 @@
+---
+# Same single-source-of-truth story as freeipa_server: domain and realm are
+# fixed by ADR-0003 and defined once as Terraform variables; these defaults
+# mirror them until the inventory generator emits group_vars. The realm is
+# the domain uppercased, always.
+freeipa_client_domain: platform.internal
+freeipa_client_realm: "{{ freeipa_client_domain | upper }}"
+
+# Enrollment target: the first (and only) member of the generated `ipa`
+# service group — taken from the inventory, never hardcoded.
+freeipa_client_server: "{{ groups['ipa'] | first }}"
+
+# Enrollment credentials. Admin-principal enrollment keeps M1 simple (the
+# OTP host-add flow is the alternative, at the cost of another delegated
+# step). The password comes from Ansible Vault; preflight.yml asserts it
+# exists and was changed from the placeholder.
+freeipa_client_principal: admin
+freeipa_client_admin_password: "{{ vault_freeipa_admin_password }}"
+
+# Only what enrollment itself needs. common already installs sssd, realmd
+# and krb5-workstation on every guest, and realmd plays no part in native
+# ipa-client-install enrollment anyway. oddjob-mkhomedir backs the
+# installer's --mkhomedir so first logins get a home directory.
+freeipa_client_packages:
+  - ipa-client
+  - oddjob-mkhomedir

@@ -1,0 +1,46 @@
+---
+# freeipa_client/tasks/dns.yml — Publish the client's A/PTR records to the
+# lab's only nameserver (ADR-0003) before enrollment runs.
+#
+# ipa-client-install does not create DNS records, and IPA zones ship with
+# dynamic updates disabled — without this, ipa-01 could never resolve the
+# client it just enrolled. The IP is static (cloud-init network-config),
+# so the record is declarative: check, then add once. Delegated to the
+# server because that is where the ipa CLI and the admin credentials work.
+# --a-create-reverse fills the reverse zone ipa-server-install created via
+# --auto-reverse.
+- name: Publish the client's DNS records on the IPA server
+  delegate_to: "{{ freeipa_client_server }}"
+  block:
+    # Password over stdin, not argv, so it never appears in a process list.
+    - name: Obtain a Kerberos ticket as admin
+      ansible.builtin.command:
+        argv:
+          - kinit
+          - "{{ freeipa_client_principal }}@{{ freeipa_client_realm }}"
+        stdin: "{{ freeipa_client_admin_password }}"
+      changed_when: false
+      no_log: true
+
+    # rc 2 is the ipa CLI's NotFound — the one state the add may fix.
+    # Anything else (no ticket, no zone) must fail loudly here.
+    - name: Check whether the client's A record exists
+      ansible.builtin.command: >-
+        ipa dnsrecord-show {{ freeipa_client_domain }}
+        {{ inventory_hostname_short }}
+      register: freeipa_client_dns_show
+      changed_when: false
+      failed_when: freeipa_client_dns_show.rc not in [0, 2]
+
+    - name: Add the client's A record and its PTR
+      ansible.builtin.command: >-
+        ipa dnsrecord-add {{ freeipa_client_domain }}
+        {{ inventory_hostname_short }}
+        --a-rec={{ ansible_host }} --a-create-reverse
+      when: freeipa_client_dns_show.rc == 2
+      changed_when: true
+  always:
+    - name: Destroy the admin ticket
+      ansible.builtin.command: kdestroy -A
+      changed_when: false
+      failed_when: false

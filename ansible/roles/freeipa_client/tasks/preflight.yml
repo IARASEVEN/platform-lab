@@ -1,0 +1,16 @@
+---
+# freeipa_client/tasks/preflight.yml — Fail fast: no vault, no run.
+#
+# Unlike ipa-01, this host keeps cloud-init's manage_etc_hosts: true. The
+# loopback FQDN mapping cloud-init writes is fatal for ipa-server-install
+# but tolerated by the client installer, and dns.yml publishes the real
+# address to BIND — so the server-role /etc/hosts surgery is not repeated
+# here.
+- name: Assert vault secrets are loaded and not placeholders
+  ansible.builtin.assert:
+    that:
+      - vault_freeipa_admin_password is defined
+      - vault_freeipa_admin_password is not search("CHANGE_ME")
+    fail_msg: >-
+      Vault variables missing or still placeholders. Create ansible/vault.yml
+      from ansible/vault.example.yml and encrypt it (see ansible/README.md).

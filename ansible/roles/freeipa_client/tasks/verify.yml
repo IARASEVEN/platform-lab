@@ -1,0 +1,26 @@
+---
+# freeipa_client/tasks/verify.yml — Prove the enrollment actually works.
+# Read-only, runs on every play: id exercises SSSD's IPA user lookup end
+# to end, getent proves authselect wired sss into NSS, and the keytab
+# kinit proves the host holds real Kerberos credentials — the same legs an
+# SSH login stands on once HBAC allows one.
+- name: Resolve the admin user through SSSD
+  ansible.builtin.command: id admin
+  changed_when: false
+
+- name: Resolve the admin user through NSS
+  ansible.builtin.command: getent passwd admin
+  changed_when: false
+
+- name: Verify the host keytab against the KDC
+  block:
+    - name: Obtain a ticket with the host keytab
+      ansible.builtin.command: >-
+        kinit -kt /etc/krb5.keytab
+        host/{{ inventory_hostname }}@{{ freeipa_client_realm }}
+      changed_when: false
+  always:
+    - name: Destroy the verification ticket
+      ansible.builtin.command: kdestroy -A
+      changed_when: false
+      failed_when: false
