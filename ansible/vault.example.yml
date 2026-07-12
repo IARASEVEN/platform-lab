@@ -1,0 +1,11 @@
+---
+# Ansible Vault template. Copy to ansible/vault.yml, replace every value,
+# then encrypt it:
+#
+#   cp ansible/vault.example.yml ansible/vault.yml
+#   ansible-vault encrypt ansible/vault.yml --vault-password-file .vault-pass
+#
+# The real vault.yml and the vault password file are gitignored
+# (**/vault.yml, .vault-pass*). Only this placeholder file is committed.
+vault_freeipa_dm_password: "CHANGE_ME_32_chars_min"
+vault_freeipa_admin_password: "CHANGE_ME_32_chars_min"

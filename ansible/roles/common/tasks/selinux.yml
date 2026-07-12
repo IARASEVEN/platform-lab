@@ -1,0 +1,3 @@
+---
+# common/tasks/selinux.yml — Configure SELinux enforcing.
+# Stub: implemented in M1.2.
