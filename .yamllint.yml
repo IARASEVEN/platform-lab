@@ -9,6 +9,8 @@ ignore: |
   .terraform/
   # Generated inventory — gitignored, never linted (see ansible/inventory/).
   ansible/inventory/hosts.yml
+  # Encrypted vault — gitignored; starts with $ANSIBLE_VAULT, not YAML.
+  ansible/vault.yml
 
 rules:
   line-length:
