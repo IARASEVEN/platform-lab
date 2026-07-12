@@ -139,6 +139,22 @@ resource "libvirt_domain" "ipa01" {
         }
       }
     ]
+    # virtio channel the qemu-guest-agent binds to; without it the agent
+    # service cannot start inside the guest (cloud-init enables it).
+    channels = [
+      {
+        source = {
+          unix = {
+            mode = "bind"
+          }
+        }
+        target = {
+          virt_io = {
+            name = "org.qemu.guest_agent.0"
+          }
+        }
+      }
+    ]
   }
 }
 
@@ -225,6 +241,22 @@ resource "libvirt_domain" "client01" {
           vram    = 16384
           heads   = 1
           primary = "yes"
+        }
+      }
+    ]
+    # virtio channel the qemu-guest-agent binds to; without it the agent
+    # service cannot start inside the guest (cloud-init enables it).
+    channels = [
+      {
+        source = {
+          unix = {
+            mode = "bind"
+          }
+        }
+        target = {
+          virt_io = {
+            name = "org.qemu.guest_agent.0"
+          }
         }
       }
     ]
