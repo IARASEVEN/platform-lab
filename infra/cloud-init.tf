@@ -33,9 +33,9 @@ resource "libvirt_cloudinit_disk" "ipa01" {
         match = {
           macaddress = local.ipa01_mac
         }
-        set-name    = "eth0"
-        addresses   = ["${var.ipa01_ip}/24"]
-        gateway4    = var.network_gateway
+        set-name  = "eth0"
+        addresses = ["${var.ipa01_ip}/24"]
+        gateway4  = var.network_gateway
         nameservers = {
           # ipa-01 cannot resolve via itself yet (FreeIPA isn't installed)
           # and libvirt's dnsmasq DNS is off network-wide (ADR-0003). These
@@ -50,12 +50,6 @@ resource "libvirt_cloudinit_disk" "ipa01" {
 resource "libvirt_volume" "ipa01_cloudinit" {
   name = "ipa-01-cloudinit.iso"
   pool = libvirt_pool.platform_lab.name
-
-  target = {
-    format = {
-      type = "raw"
-    }
-  }
 
   create = {
     content = {
@@ -94,9 +88,9 @@ resource "libvirt_cloudinit_disk" "client01" {
         match = {
           macaddress = local.client01_mac
         }
-        set-name    = "eth0"
-        addresses   = ["${var.client01_ip}/24"]
-        gateway4    = var.network_gateway
+        set-name  = "eth0"
+        addresses = ["${var.client01_ip}/24"]
+        gateway4  = var.network_gateway
         nameservers = {
           # ipa-01 is expected to be up (make identity runs before
           # make apps) and is the sole authoritative DNS server (ADR-0003).
@@ -110,12 +104,6 @@ resource "libvirt_cloudinit_disk" "client01" {
 resource "libvirt_volume" "client01_cloudinit" {
   name = "client-01-cloudinit.iso"
   pool = libvirt_pool.platform_lab.name
-
-  target = {
-    format = {
-      type = "raw"
-    }
-  }
 
   create = {
     content = {

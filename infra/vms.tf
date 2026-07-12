@@ -12,6 +12,12 @@ resource "libvirt_volume" "ipa01_disk" {
   pool     = libvirt_pool.platform_lab.name
   capacity = 21474836480 # 20 GiB — 389-ds + Dogtag CA
 
+  target = {
+    format = {
+      type = "qcow2"
+    }
+  }
+
   backing_store = {
     path = libvirt_volume.rocky_base.path
     format = {
@@ -25,6 +31,12 @@ resource "libvirt_volume" "client01_disk" {
   pool     = libvirt_pool.platform_lab.name
   capacity = 10737418240 # 10 GiB
 
+  target = {
+    format = {
+      type = "qcow2"
+    }
+  }
+
   backing_store = {
     path = libvirt_volume.rocky_base.path
     format = {
@@ -36,9 +48,23 @@ resource "libvirt_volume" "client01_disk" {
 resource "libvirt_domain" "ipa01" {
   name        = "ipa-01"
   type        = "kvm"
+  running     = true
   memory      = 4096
   memory_unit = "MiB"
   vcpu        = 2
+
+  # Rocky 9 userspace requires x86-64-v2; the provider's default qemu64
+  # model lacks it and the guest panics killing init.
+  cpu = {
+    mode = "host-passthrough"
+  }
+
+  # libvirt defaults ACPI off unless requested; a q35 guest without ACPI
+  # hangs before the kernel registers its console.
+  features = {
+    acpi = true
+    apic = {}
+  }
 
   os = {
     type         = "hvm"
@@ -54,6 +80,12 @@ resource "libvirt_domain" "ipa01" {
   devices = {
     disks = [
       {
+        # Without an explicit driver, libvirt attaches the volume as raw and
+        # the guest sees the qcow2 container instead of the OS — unbootable.
+        driver = {
+          name = "qemu"
+          type = "qcow2"
+        }
         source = {
           volume = {
             pool   = libvirt_pool.platform_lab.name
@@ -95,15 +127,37 @@ resource "libvirt_domain" "ipa01" {
         }
       }
     ]
+    # The Rocky 9 GenericCloud GRUB resets the machine at boot when the
+    # guest has no video adapter, so headless-with-VGA it is.
+    videos = [
+      {
+        model = {
+          type    = "vga"
+          vram    = 16384
+          heads   = 1
+          primary = "yes"
+        }
+      }
+    ]
   }
 }
 
 resource "libvirt_domain" "client01" {
   name        = "client-01"
   type        = "kvm"
+  running     = true
   memory      = 2048
   memory_unit = "MiB"
   vcpu        = 1
+
+  cpu = {
+    mode = "host-passthrough"
+  }
+
+  features = {
+    acpi = true
+    apic = {}
+  }
 
   os = {
     type         = "hvm"
@@ -119,6 +173,10 @@ resource "libvirt_domain" "client01" {
   devices = {
     disks = [
       {
+        driver = {
+          name = "qemu"
+          type = "qcow2"
+        }
         source = {
           volume = {
             pool   = libvirt_pool.platform_lab.name
@@ -157,6 +215,16 @@ resource "libvirt_domain" "client01" {
           network = {
             network = libvirt_network.platform_lab.name
           }
+        }
+      }
+    ]
+    videos = [
+      {
+        model = {
+          type    = "vga"
+          vram    = 16384
+          heads   = 1
+          primary = "yes"
         }
       }
     ]
