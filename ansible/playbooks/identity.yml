@@ -1,0 +1,22 @@
+---
+# Orchestrates the identity profile. Invoked through `make identity` after
+# `make inventory` regenerates hosts.yml from Terraform state — never run
+# against a hand-written inventory. Static role imports on purpose: dynamic
+# includes would swallow the role tags, while here `--tags verify` re-runs
+# just the FreeIPA health checks (kinit + GSSAPI ldapsearch included — the
+# server role verifies itself, the playbook adds no weaker duplicate).
+- name: Configure the identity baseline (M1.2)
+  hosts: identity
+  become: true
+  gather_facts: true
+  roles:
+    - common
+
+- name: Install and verify the FreeIPA server (M1.3)
+  hosts: ipa
+  become: true
+  gather_facts: true
+  vars_files:
+    - ../vault.yml
+  roles:
+    - freeipa_server

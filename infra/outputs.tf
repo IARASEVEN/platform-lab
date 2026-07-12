@@ -36,10 +36,12 @@ output "vms" {
       fqdn    = "ipa-01.${var.dns_domain}"
       profile = "identity"
     }
+    # client-01 is identity, not apps: at M1 it exists to prove enrollment,
+    # HBAC and sudo against ipa-01 — it starts and stops with that profile.
     client-01 = {
       ip      = var.client01_ip
       fqdn    = "client-01.${var.dns_domain}"
-      profile = "apps"
+      profile = "identity"
     }
   }
 }

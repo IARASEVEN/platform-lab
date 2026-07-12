@@ -2,6 +2,12 @@
 # Example inventory. The real hosts.yml is generated from Terraform state
 # via `make inventory` and is gitignored. All values here are the lab's
 # synthetic, public-by-design addressing (see ADR-0003).
+#
+# Two kinds of groups, both emitted by the generator: profile groups from
+# the `profile` field of Terraform's `vms` output, and one service group
+# per host, named after the short hostname minus its trailing -NN
+# (ipa-01 -> ipa). Playbooks target profile groups for the baseline and
+# service groups for the service roles.
 all:
   children:
     identity:
@@ -10,6 +16,8 @@ all:
           ansible_host: 192.168.60.10
         idp-01.platform.internal:
           ansible_host: 192.168.60.30
+        client-01.platform.internal:
+          ansible_host: 192.168.60.50
     observability:
       hosts:
         obs-01.platform.internal:
@@ -18,5 +26,18 @@ all:
       hosts:
         app-01.platform.internal:
           ansible_host: 192.168.60.40
+    ipa:
+      hosts:
+        ipa-01.platform.internal:
+    idp:
+      hosts:
+        idp-01.platform.internal:
+    client:
+      hosts:
         client-01.platform.internal:
-          ansible_host: 192.168.60.50
+    obs:
+      hosts:
+        obs-01.platform.internal:
+    app:
+      hosts:
+        app-01.platform.internal:
