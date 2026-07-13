@@ -36,8 +36,8 @@ identity: inventory ## Configure the identity profile (inventory + identity play
 observability: ## Provision + configure observability (M2)
 	$(call not-yet,M2)
 
-apps: ## Provision + configure apps (M3)
-	$(call not-yet,M3)
+apps: inventory ## Configure the apps profile (inventory + apps playbook)
+	ansible-playbook -i ansible/inventory/hosts.yml ansible/playbooks/apps.yml $(ASK_VAULT)
 
 all: ## Everything (M3, once all profiles exist)
 	$(call not-yet,M3)

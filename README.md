@@ -21,15 +21,19 @@ the running lab is disposable by design.
 
 **M1 complete, M3 in progress.** Identity core — FreeIPA, DNS, CA, HBAC
 deny-by-default, sudo rules, Ansible — is done and boots with one command.
-Keycloak is running on `idp-01`, federated to FreeIPA over LDAP; the rest of
-M3 (versioned realm export, Grafana's migration from LDAP to OIDC) is still
-ahead. The milestone table below is the honest state of the work.
+Keycloak is running on `idp-01`, federated to FreeIPA over LDAP. WikiJS,
+its PostgreSQL, and native Nginx reverse proxies in front of both Keycloak
+and WikiJS (ADR-0007) are implemented and wired into `make apps`; `app-01`
+still needs `terraform apply` and a vault update before that profile has
+actually run anywhere. Versioned realm export and Grafana's migration from
+LDAP to OIDC are still ahead. The milestone table below is the honest state
+of the work.
 
 | Milestone | Contents | Status |
 |---|---|---|
 | **M1 — identity core** | Terraform + cloud-init, FreeIPA on Rocky 9, DNS, CA, HBAC deny-by-default, sudo rules, Ansible | ✅ complete |
 | **M2 — observability** | Prometheus, Grafana, Loki, Alloy, Alertmanager, exporters, SLOs, runbooks | planned |
-| **M3 — keycloak federation** | Keycloak federated to FreeIPA, versioned realm export, Grafana migrated from LDAP to OIDC | 🔄 in progress (70%) |
+| **M3 — keycloak federation** | Keycloak federated to FreeIPA, WikiJS + Nginx behind Keycloak OIDC, versioned realm export, Grafana migrated from LDAP to OIDC | 🔄 in progress (80%) |
 | **M4 — cert exporter** | Go exporter for FreeIPA certificate expiry, tests, Prometheus alert, renewal runbook | planned |
 | **M5 — CI, docs, demo** | Full pipeline, architecture diagram, ADR set, asciinema demo, final README | planned |
 
@@ -91,9 +95,11 @@ a 16 GB machine can still run any single profile.
 
 `make identity` is ready: it provisions and configures the whole identity
 profile end to end — FreeIPA, DNS, CA, HBAC deny-by-default, sudo rules, the
-enrolled client, and (M3, in progress) Keycloak federated to FreeIPA on
-`idp-01`. `make observability` and `make apps` are not implemented yet (see
-[Status](#status)).
+enrolled client, and Keycloak federated to FreeIPA on `idp-01`, fronted by
+its own Nginx proxy (ADR-0007). `make apps` is also ready — WikiJS + its
+PostgreSQL + Nginx on `app-01` — but needs `terraform apply` for `app-01`
+and a vault update first (see [Status](#status)). `make observability` is
+not implemented yet.
 
 The Makefile is the only human interface:
 
@@ -131,6 +137,8 @@ Every architectural choice gets an ADR, including its limitations:
 - [ADR-0003](docs/adr/0003-dns-domain-realm-and-ownership.md) — DNS domain, realm, and FreeIPA as sole DNS
 - [ADR-0004](docs/adr/0004-quadlets-over-compose.md) — Podman Quadlets over docker-compose
 - [ADR-0005](docs/adr/0005-freeipa-on-the-host.md) — FreeIPA bare-metal, not containerised
+- [ADR-0006](docs/adr/0006-keycloak-federates-to-freeipa-over-ldap.md) — Keycloak federates to FreeIPA over LDAP
+- [ADR-0007](docs/adr/0007-nginx-reverse-proxies-for-idp-and-app.md) — Native Nginx reverse proxies in front of Keycloak and WikiJS
 
 ## What this is not
 
