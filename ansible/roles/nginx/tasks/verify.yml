@@ -1,0 +1,9 @@
+---
+# nginx/tasks/verify.yml — Liveness only: the site's own content (does it
+# actually reach the right upstream, is the callback path right) is the
+# calling role's job to prove, not this generic role's.
+- name: Wait for nginx to listen
+  ansible.builtin.wait_for:
+    host: 127.0.0.1
+    port: "{{ nginx_listen_port }}"
+    timeout: 30

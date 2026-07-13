@@ -59,6 +59,15 @@ keycloak_java_heap: -Xms256m -Xmx1024m
 keycloak_verify_user: alice
 keycloak_verify_password: "{{ vault_demo_user_password }}"
 
+# OIDC clients for M3.3+ applications (ADR-0007), created the same
+# idempotent admin-API way as the LDAP federation provider. WikiJS is the
+# only consumer today; NetBox adds a second client the same way later.
+# The redirect URI is a wildcard, not Wiki.js's literal callback path —
+# see oidc_clients.yml for why.
+keycloak_wikijs_client_id: wikijs
+keycloak_wikijs_client_secret: "{{ vault_wikijs_oidc_client_secret }}"
+keycloak_wikijs_redirect_base: "http://{{ groups['app'] | first }}"
+
 # Rootless plumbing (ADR-0004). The service account, its lingering and
 # the idp network all belong to the postgresql role, which runs first on
 # this host; preflight asserts they exist instead of competing over

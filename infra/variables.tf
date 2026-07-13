@@ -46,6 +46,12 @@ variable "idp01_ip" {
   default     = "192.168.60.30"
 }
 
+variable "app01_ip" {
+  description = "Static IP for app-01, the WikiJS/NetBox/Nginx host (apps profile, M3)."
+  type        = string
+  default     = "192.168.60.40"
+}
+
 variable "rocky_image_url" {
   description = "URL of the Rocky Linux 9 GenericCloud base qcow2 image, pinned to an exact build — never the floating 'latest' symlink."
   type        = string

@@ -18,3 +18,18 @@ vault_postgresql_password: "CHANGE_ME_32_chars_min"
 # reads it only while its database is empty — rotate via the admin
 # console afterwards, not by changing this value.
 vault_keycloak_admin_password: "CHANGE_ME_32_chars_min"
+# Superuser password of the single-tenant PostgreSQL instance on app-01
+# (postgresql role, overridden per apps.yml). wikijs is its only role
+# and its only database.
+vault_wikijs_db_password: "CHANGE_ME_32_chars_min"
+# WikiJS's own local admin account (wikijs role) — separate from
+# Keycloak-federated users, who authenticate through the OIDC strategy
+# instead. Read only while WikiJS's first-run setup wizard is completed.
+vault_wikijs_admin_password: "CHANGE_ME_32_chars_min"
+# Shared secret between the Keycloak `wikijs` client (keycloak role,
+# oidc_clients.yml) and WikiJS's own OIDC strategy config. Rotating it
+# means updating both sides.
+vault_wikijs_oidc_client_secret: "CHANGE_ME_32_chars_min"
+vault_wikijs_db_password: "CHANGE_ME_32_chars_min"
+vault_wikijs_admin_password: "CHANGE_ME_32_chars_min"
+vault_wikijs_oidc_client_secret: "CHANGE_ME_32_chars_min"

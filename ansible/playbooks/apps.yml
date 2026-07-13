@@ -1,0 +1,60 @@
+---
+# Orchestrates the apps profile. Invoked through `make apps` after `make
+# inventory` regenerates hosts.yml from Terraform state, the same
+# contract identity.yml uses. Static role imports on purpose, for the
+# same tag-preserving reason identity.yml gives.
+- name: Configure the apps baseline (M3.3)
+  hosts: apps
+  become: true
+  gather_facts: true
+  roles:
+    - common
+
+# app-01 hosts the M3.3 apps stack as rootless Quadlets (ADR-0004),
+# mirroring idp-01's shape: PostgreSQL arrives first, WikiJS lands beside
+# it and expects the database to be answering. This is the postgresql
+# role's second consumer — see its defaults/main.yml for how the
+# overrides below keep it separate from idp-01's keycloak/keycloak
+# instance (different host, but also a different user/db/network/account
+# by name, not just by address).
+- name: Deploy PostgreSQL for WikiJS (M3.3)
+  hosts: app
+  become: true
+  gather_facts: true
+  vars_files:
+    - ../vault.yml
+  vars:
+    postgresql_user: wikijs
+    postgresql_db: wikijs
+    postgresql_password: "{{ vault_wikijs_db_password }}"
+    postgresql_data_dir: /var/lib/postgresql-wikijs
+    postgresql_network: app
+    postgresql_service_user: svc-app
+  roles:
+    - postgresql
+
+# WikiJS consumes what the play above created — the service account,
+# the app network, the database — and what identity.yml's M3.2+M3.3
+# plays created on idp-01: the platform realm, the wikijs OIDC client,
+# and the proxy that makes the realm reachable from here (ADR-0007).
+- name: Deploy WikiJS (M3.3)
+  hosts: app
+  become: true
+  gather_facts: true
+  vars_files:
+    - ../vault.yml
+  roles:
+    - wikijs
+
+# Fronts WikiJS with the same nginx role idp-01 uses for Keycloak
+# (ADR-0007) — general reverse proxy, no path restriction, since WikiJS
+# is the only thing app-01 exposes today.
+- name: Deploy the app-01 reverse proxy (M3.3)
+  hosts: app
+  become: true
+  gather_facts: true
+  vars:
+    nginx_site_name: wikijs
+    nginx_site_template: "{{ playbook_dir }}/../roles/wikijs/templates/nginx-app.conf.j2"
+  roles:
+    - nginx

@@ -112,9 +112,11 @@
 # KEYCLOAK_ADMIN is deprecated for KC_BOOTSTRAP_ADMIN_*; health lives
 # on the management interface (9000) and needs KC_HEALTH_ENABLED; the
 # image ships no curl, so the probe is keycloak.org's bash /dev/tcp
-# idiom (the image's /bin/sh is bash); proxy headers are deliberately
-# NOT configured — there is no proxy until M3.3, and trusting
-# X-Forwarded-* without one would let any client spoof its address.
+# idiom (the image's /bin/sh is bash); KC_PROXY_HEADERS trusts
+# X-Forwarded-* now that the M3.3 nginx role (ADR-0007) is the only
+# thing that can reach this container's published port — trusting those
+# headers without a proxy in front would let any client spoof its
+# address.
 - name: Install the keycloak.container Quadlet unit
   ansible.builtin.copy:
     dest: >-
@@ -146,12 +148,18 @@
       Environment=KC_DB_URL_PORT={{ keycloak_db_port }}
       Environment=KC_DB_URL_DATABASE={{ keycloak_db_name }}
       Environment=KC_DB_USERNAME={{ keycloak_db_user }}
-      # Plain HTTP inside the lab NAT, loopback-published only. Strict
-      # hostname is off because Keycloak is reached under several names
-      # (loopback tunnel today, the M3.3 reverse proxy tomorrow) — the
-      # proxy hardens this with a stable URL.
+      # Plain HTTP inside the lab NAT, loopback-published only — unchanged
+      # by the M3.3 nginx role (ADR-0007): the proxy reaches this same
+      # container port from idp-01 itself, so the container's own network
+      # exposure never widens, only what can reach 127.0.0.1 does. Strict
+      # hostname stays off because Keycloak is reached under several names
+      # (loopback tunnel, the nginx-fronted lab-network name) — the proxy
+      # sets Host instead of relying on strict matching. KC_PROXY_HEADERS
+      # trusts the proxy's X-Forwarded-* now that one actually sits in
+      # front (see the Quadlet header note above).
       Environment=KC_HTTP_ENABLED=true
       Environment=KC_HOSTNAME_STRICT=false
+      Environment=KC_PROXY_HEADERS=xforwarded
       Environment=KC_HEALTH_ENABLED=true
       Environment=KC_BOOTSTRAP_ADMIN_USERNAME={{ keycloak_admin_user }}
       Environment="JAVA_OPTS_KC_HEAP={{ keycloak_java_heap }}"

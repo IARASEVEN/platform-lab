@@ -1,0 +1,24 @@
+---
+# WikiJS as a rootless Podman Quadlet (ADR-0004) on app-01, beside M3.3's
+# PostgreSQL, reachable through Keycloak OIDC once the platform realm's
+# proxy (ADR-0007) is up. Order matters: preflight fails fast without
+# vault secrets or the database, packages must land before any podman
+# command runs, quadlet starts the unit, and verify proves what can
+# actually be proven — see verify.yml for the one piece (the OIDC
+# strategy itself) that's a documented manual step instead, so
+# `--tags verify` re-runs just the checks like the other roles here.
+- name: Run preflight checks
+  ansible.builtin.import_tasks: preflight.yml
+  tags: [preflight]
+
+- name: Install the container runtime
+  ansible.builtin.import_tasks: packages.yml
+  tags: [packages]
+
+- name: Deploy the WikiJS Quadlet
+  ansible.builtin.import_tasks: quadlet.yml
+  tags: [quadlet]
+
+- name: Verify WikiJS end to end
+  ansible.builtin.import_tasks: verify.yml
+  tags: [verify]

@@ -1,0 +1,8 @@
+---
+# wikijs/tasks/packages.yml — Rootless container runtime only; nginx is
+# the separate, native `nginx` role (ADR-0007), not part of this stack's
+# rootless namespace.
+- name: Install the container runtime
+  ansible.builtin.dnf:
+    name: "{{ wikijs_packages }}"
+    state: present

@@ -1,0 +1,30 @@
+---
+# keycloak/tasks/oidc_clients.yml — OIDC clients for M3.3+ applications,
+# driven through the admin REST API the same idempotent way as
+# ldap_federation.yml. WikiJS is the only consumer today.
+- name: Create the wikijs OIDC client
+  community.general.keycloak_client:
+    auth_keycloak_url: "{{ keycloak_base_url }}"
+    auth_realm: master
+    auth_username: "{{ keycloak_admin_user }}"
+    auth_password: "{{ keycloak_admin_password }}"
+    realm: "{{ keycloak_realm }}"
+    client_id: "{{ keycloak_wikijs_client_id }}"
+    name: WikiJS
+    protocol: openid-connect
+    public_client: false
+    secret: "{{ keycloak_wikijs_client_secret }}"
+    standard_flow_enabled: true
+    direct_access_grants_enabled: false
+    # Wildcard, not the literal callback path: Wiki.js's callback is
+    # /login/<strategy-key>/callback, and the key only exists once the
+    # strategy itself is created in Wiki.js's admin panel — a manual,
+    # one-time step documented in services/apps/README.md (Wiki.js has
+    # no confirmed non-interactive way to do this). Narrow this to the
+    # exact path once that key is confirmed against the running instance.
+    redirect_uris:
+      - "{{ keycloak_wikijs_redirect_base }}/login/*"
+    web_origins:
+      - "{{ keycloak_wikijs_redirect_base }}"
+    state: present
+  no_log: true

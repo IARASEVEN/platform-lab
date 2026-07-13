@@ -1,0 +1,24 @@
+# Managed by Ansible (wikijs role) — edits are overwritten.
+#
+# Fronts WikiJS on app-01 (ADR-0007). General reverse proxy — unlike
+# idp-01's Keycloak proxy there's nothing to path-restrict here: WikiJS
+# is the only thing app-01 exposes today (NetBox adds a second server
+# block the same way later).
+server {
+    listen {{ nginx_listen_port }};
+    server_name app-01.platform.internal;
+
+    location / {
+        proxy_pass http://127.0.0.1:3000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        # WikiJS uses a Socket.IO connection for its editor/live-update
+        # UI; without the Upgrade/Connection pair nginx serves it as a
+        # plain HTTP request and it never connects.
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+    }
+}

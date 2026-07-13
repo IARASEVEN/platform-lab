@@ -1,0 +1,38 @@
+---
+# nginx/tasks/site.yml — One conf.d fragment per invocation, owned by the
+# caller; this role only lands it, checks it, and (re)starts the service.
+- name: Deploy the site config
+  ansible.builtin.template:
+    src: "{{ nginx_site_template }}"
+    dest: "/etc/nginx/conf.d/{{ nginx_site_name }}.conf"
+    owner: root
+    group: root
+    mode: "0644"
+  register: nginx_site_deployed
+
+# nginx -t validates the whole live config tree, conf.d fragments included
+# — there is no supported way to test-parse a fragment in isolation, so
+# this runs against the real config after the file has landed rather than
+# through the template module's own validate: hook (which expects a
+# self-contained, directly-loadable config file).
+- name: Validate the nginx configuration
+  ansible.builtin.command:
+    cmd: nginx -t
+  changed_when: false
+
+# Self-contained on purpose: only idp-01 and app-01 run this role, and
+# each opens exactly the port it uses. Not folded into the common role's
+# common_firewall_services — that list is one flat baseline applied to
+# every identity-profile host alike, and this isn't.
+- name: Open the proxy's port in firewalld
+  ansible.posix.firewalld:
+    port: "{{ nginx_listen_port }}/tcp"
+    permanent: true
+    immediate: true
+    state: enabled
+
+- name: Enable and start nginx
+  ansible.builtin.systemd_service:
+    name: nginx
+    enabled: true
+    state: "{{ 'restarted' if nginx_site_deployed is changed else 'started' }}"

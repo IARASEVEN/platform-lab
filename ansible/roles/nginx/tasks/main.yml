@@ -1,0 +1,23 @@
+---
+# nginx/tasks/main.yml — Native, rootful reverse proxy (ADR-0007). Fronts
+# Keycloak on idp-01 and WikiJS on app-01, one invocation each, with the
+# site content owned by the calling role. Order matters: preflight fails
+# fast without a site to deploy, packages must land before the config or
+# the service exist, site deploys and (re)starts nginx, verify proves the
+# port is up so `--tags verify` re-runs just that check like the other
+# roles here.
+- name: Run preflight checks
+  ansible.builtin.import_tasks: preflight.yml
+  tags: [preflight]
+
+- name: Install nginx
+  ansible.builtin.import_tasks: packages.yml
+  tags: [packages]
+
+- name: Deploy the site
+  ansible.builtin.import_tasks: site.yml
+  tags: [site]
+
+- name: Verify nginx is listening
+  ansible.builtin.import_tasks: verify.yml
+  tags: [verify]

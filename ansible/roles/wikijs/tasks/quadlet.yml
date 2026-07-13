@@ -1,0 +1,146 @@
+---
+# wikijs/tasks/quadlet.yml — Rootless plumbing, then the unit. Same split
+# as postgresql/keycloak: everything that talks to the user-scope podman
+# or systemd instance runs as the service account with XDG_RUNTIME_DIR
+# set; the unit copy runs as root. The account, its lingering and this
+# host's network belong to the postgresql role — this role only resolves
+# them.
+- name: Resolve the rootless service account
+  ansible.builtin.getent:
+    database: passwd
+    key: "{{ wikijs_service_user }}"
+
+- name: Record the account's runtime dir and home for user-scope tasks
+  ansible.builtin.set_fact:
+    wikijs_runtime_dir: >-
+      /run/user/{{ ansible_facts.getent_passwd[wikijs_service_user][1] }}
+    wikijs_service_home: >-
+      {{ ansible_facts.getent_passwd[wikijs_service_user][4] }}
+
+# Lingering (enabled by the postgresql role) starts the user manager at
+# boot; if this times out, that role has not run on this host.
+- name: Wait for the user manager's D-Bus socket
+  ansible.builtin.wait_for:
+    path: "{{ wikijs_runtime_dir }}/bus"
+    timeout: 30
+
+# The unit below mounts the database password secret created by the
+# postgresql role. Fail here with a pointer instead of letting systemd
+# fail the start with a generic missing-secret error.
+- name: Assert the database password secret exists
+  become: true
+  become_user: "{{ wikijs_service_user }}"
+  environment:
+    XDG_RUNTIME_DIR: "{{ wikijs_runtime_dir }}"
+  ansible.builtin.command:
+    cmd: podman secret exists {{ wikijs_db_secret_name }}
+  register: wikijs_db_secret_check
+  changed_when: false
+  failed_when: wikijs_db_secret_check.rc != 0
+
+- name: Check whether the WikiJS image is present
+  become: true
+  become_user: "{{ wikijs_service_user }}"
+  environment:
+    XDG_RUNTIME_DIR: "{{ wikijs_runtime_dir }}"
+  ansible.builtin.command:
+    cmd: podman image exists {{ wikijs_image }}
+  register: wikijs_image_exists
+  failed_when: wikijs_image_exists.rc not in [0, 1]
+  changed_when: false
+
+# Pre-pulled so the first systemctl start does not spend its start
+# timeout downloading, and pulled as the service user — rootless image
+# storage is per-user.
+- name: Pull the pinned WikiJS image
+  become: true
+  become_user: "{{ wikijs_service_user }}"
+  environment:
+    XDG_RUNTIME_DIR: "{{ wikijs_runtime_dir }}"
+  ansible.builtin.command:
+    cmd: podman pull {{ wikijs_image }}
+  when: wikijs_image_exists.rc == 1
+  register: wikijs_image_pulled
+  changed_when: true
+
+- name: Check whether the data directory already exists
+  ansible.builtin.stat:
+    path: "{{ wikijs_data_dir }}"
+  register: wikijs_data_dir_stat
+
+# First boot only, then hands off — same reasoning as postgresql's own
+# data directory: the image entrypoint chowns this to the in-container
+# wiki user (a subordinate uid on the host) on first start, so
+# re-stamping ownership on later runs would map it to container root.
+- name: Create the WikiJS data directory (first boot only)
+  ansible.builtin.file:
+    path: "{{ wikijs_data_dir }}"
+    state: directory
+    owner: "{{ wikijs_service_user }}"
+    group: "{{ wikijs_service_user }}"
+    mode: "0700"
+  when: not wikijs_data_dir_stat.stat.exists
+
+- name: Create the Quadlet directory
+  become: true
+  become_user: "{{ wikijs_service_user }}"
+  ansible.builtin.file:
+    path: "{{ wikijs_service_home }}/.config/containers/systemd"
+    state: directory
+    mode: "0755"
+
+# No HealthCmd/Notify=healthy here, unlike postgres/keycloak: those were
+# written against a curl-less image where the working probe (bash's
+# /dev/tcp) was confirmed against the running container first. Wiki.js's
+# image internals (is /bin/sh bash or busybox ash; does it ship curl or
+# wget; does the pinned 2.5.x tag even serve /healthz — upstream
+# discussion suggests that endpoint may be newer than this pin) aren't
+# confirmed the same way yet. verify.yml's checks run from outside the
+# container instead and don't depend on any of that — add a real
+# HealthCmd here once the running container answers those questions.
+- name: Install the wikijs.container Quadlet unit
+  ansible.builtin.copy:
+    dest: >-
+      {{ wikijs_service_home }}/.config/containers/systemd/wikijs.container
+    owner: "{{ wikijs_service_user }}"
+    group: "{{ wikijs_service_user }}"
+    mode: "0600"
+    content: |
+      # Managed by Ansible (wikijs role) — edits are overwritten.
+      [Unit]
+      Description=WikiJS (M3.3)
+      Wants=postgres.service
+      After=postgres.service
+
+      [Container]
+      ContainerName=wikijs
+      Image={{ wikijs_image }}
+      Network=app.network
+      PublishPort={{ wikijs_listen_address }}:{{ wikijs_http_port }}:3000
+      Environment=DB_TYPE=postgres
+      Environment=DB_HOST={{ wikijs_db_host }}
+      Environment=DB_PORT={{ wikijs_db_port }}
+      Environment=DB_NAME={{ wikijs_db_name }}
+      Environment=DB_USER={{ wikijs_db_user }}
+      Secret={{ wikijs_db_secret_name }},type=env,target=DB_PASS
+      Volume={{ wikijs_data_dir }}:/data:Z
+
+      [Service]
+      Restart=on-failure
+      TimeoutStartSec=120
+
+      [Install]
+      WantedBy=default.target
+  register: wikijs_quadlet_unit
+
+- name: Reload systemd and start WikiJS
+  become: true
+  become_user: "{{ wikijs_service_user }}"
+  environment:
+    XDG_RUNTIME_DIR: "{{ wikijs_runtime_dir }}"
+  ansible.builtin.systemd_service:
+    name: wikijs.service
+    scope: user
+    daemon_reload: true
+    state: >-
+      {{ 'restarted' if wikijs_quadlet_unit is changed else 'started' }}

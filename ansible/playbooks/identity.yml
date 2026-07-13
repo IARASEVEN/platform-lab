@@ -55,8 +55,9 @@
 
 # Keycloak consumes what the play above created — the service account,
 # the idp network, the database — and what the ipa plays created: the
-# 389-ds tree it federates to (ADR-0006).
-- name: Deploy Keycloak federated to FreeIPA (M3.2)
+# 389-ds tree it federates to (ADR-0006). The role also registers M3.3+
+# application OIDC clients (oidc_clients.yml) — wikijs today.
+- name: Deploy Keycloak federated to FreeIPA (M3.2 + M3.3 clients)
   hosts: idp
   become: true
   gather_facts: true
@@ -64,3 +65,19 @@
     - ../vault.yml
   roles:
     - keycloak
+
+# Fronts Keycloak with the nginx role (ADR-0007): only the platform
+# realm's OIDC endpoints become reachable from the lab network; the admin
+# console and master realm stay SSH-tunnel-only, unchanged from M3.2.
+# This is a separate play, not folded into the one above, because it
+# needs no vault secrets and shouldn't re-run Keycloak's own tasks to
+# pick up a config change here.
+- name: Front Keycloak with the reverse proxy (M3.3)
+  hosts: idp
+  become: true
+  gather_facts: true
+  vars:
+    nginx_site_name: keycloak
+    nginx_site_template: "{{ playbook_dir }}/../roles/keycloak/templates/nginx-idp.conf.j2"
+  roles:
+    - nginx

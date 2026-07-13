@@ -4,7 +4,8 @@
 # preflight fails fast without vault secrets or the database, packages
 # must land before any podman command runs, quadlet starts the unit
 # (Notify=healthy — start only returns once /health/ready answers),
-# ldap_federation drives the admin API idempotently, and verify proves
+# ldap_federation drives the admin API idempotently, oidc_clients
+# registers M3.3+ application clients the same way, and verify proves
 # the realm and a real federated login on every run, so `--tags verify`
 # re-runs just the health checks like the other roles here.
 - name: Run preflight checks
@@ -22,6 +23,10 @@
 - name: Federate the platform realm to FreeIPA
   ansible.builtin.import_tasks: ldap_federation.yml
   tags: [ldap_federation]
+
+- name: Register application OIDC clients
+  ansible.builtin.import_tasks: oidc_clients.yml
+  tags: [oidc_clients]
 
 - name: Verify Keycloak end to end
   ansible.builtin.import_tasks: verify.yml

@@ -1,0 +1,11 @@
+---
+# nginx/tasks/preflight.yml — Fail fast: no site content, no run.
+- name: Assert the caller supplied a site name and template
+  ansible.builtin.assert:
+    that:
+      - nginx_site_name is defined
+      - nginx_site_template is defined
+    fail_msg: >-
+      nginx_site_name and nginx_site_template must be set by the play that
+      includes this role — there is no sensible shared default for what to
+      proxy.

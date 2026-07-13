@@ -1,0 +1,15 @@
+---
+# Native, rootful Nginx — ADR-0004 deferred "how does something get the
+# privileged port 80" to M3, "when it first matters"; ADR-0007 resolves it
+# this way rather than a rootless container with a lowered port floor.
+#
+# This role only owns the mechanical part shared by every invocation:
+# install, one conf.d fragment, validate, open the port, start. It has no
+# opinion on what is being proxied — callers (keycloak, wikijs) own their
+# own site content as a template living in their own role, and pass its
+# path in. There is no sensible shared default for that, so preflight.yml
+# asserts callers set it instead of silently doing nothing.
+nginx_packages:
+  - nginx
+
+nginx_listen_port: 80

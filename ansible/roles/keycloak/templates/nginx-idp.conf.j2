@@ -1,0 +1,29 @@
+# Managed by Ansible (keycloak role) — edits are overwritten.
+#
+# Fronts Keycloak on idp-01 (ADR-0007). Only the platform realm — token,
+# authorization, userinfo, JWKS and its .well-known discovery document,
+# all of which live under /realms/platform/ — is reachable from the lab
+# network. The admin console and the master realm stay reachable only
+# through the SSH tunnel documented in services/keycloak/README.md.
+#
+# "platform" and "127.0.0.1:8080" are literals, not Jinja variables:
+# they mirror the keycloak role's own keycloak_realm/keycloak_http_port
+# defaults (this play doesn't run that role, so it doesn't have those
+# variables in scope) — same mirroring-with-a-comment the keycloak role
+# itself already does for the postgresql role's container name.
+server {
+    listen {{ nginx_listen_port }};
+    server_name idp-01.platform.internal;
+
+    location /realms/platform/ {
+        proxy_pass http://127.0.0.1:8080;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    location / {
+        return 403;
+    }
+}

@@ -1,0 +1,7 @@
+---
+# nginx/tasks/packages.yml — Rocky 9's AppStream module ships nginx
+# directly; no EPEL needed.
+- name: Install nginx
+  ansible.builtin.dnf:
+    name: "{{ nginx_packages }}"
+    state: present

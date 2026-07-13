@@ -1,0 +1,28 @@
+---
+# wikijs/tasks/preflight.yml — Fail fast: no vault, no database, no run.
+- name: Assert vault secrets are loaded and not placeholders
+  ansible.builtin.assert:
+    that:
+      - vault_wikijs_admin_password is defined
+      - vault_wikijs_admin_password is not search("CHANGE_ME")
+      - vault_wikijs_oidc_client_secret is defined
+      - vault_wikijs_oidc_client_secret is not search("CHANGE_ME")
+    fail_msg: >-
+      Vault variables missing or still placeholders. Create ansible/vault.yml
+      from ansible/vault.example.yml and encrypt it (see ansible/README.md).
+
+# The postgresql role (M3.3, apps.yml) owns the pieces this role builds
+# on: the rootless service account, this host's network and the database
+# itself. getent fails loudly if the account is missing — run that role
+# first, the same dependency the keycloak role has on postgresql on
+# idp-01.
+- name: Assert the postgresql role ran (service account exists)
+  ansible.builtin.getent:
+    database: passwd
+    key: "{{ wikijs_service_user }}"
+
+- name: Assert the postgresql role ran (database is answering)
+  ansible.builtin.wait_for:
+    host: 127.0.0.1
+    port: "{{ wikijs_db_port }}"
+    timeout: 10

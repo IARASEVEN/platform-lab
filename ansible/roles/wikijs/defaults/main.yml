@@ -1,0 +1,67 @@
+---
+# Image is exact-pinned like every other version in this repo: upgrades
+# are deliberate, not drift. 2.5.314 was the latest stable GitHub release
+# at implementation time (2026-07) — re-verify against
+# github.com/requarks/wiki/releases before trusting this further, the way
+# CLAUDE.md asks for every version pin. ghcr.io is upstream's primary
+# registry now (docker.io/requarks/wiki still exists as a mirror).
+wikijs_image: ghcr.io/requarks/wiki:2.5.314
+
+# WikiJS's own local admin, created by the first-run wizard — separate
+# from Keycloak-federated users (alice, bob), who authenticate through
+# the OIDC strategy below instead. Wiki.js requires an email, not just a
+# username, for this account.
+wikijs_admin_email: admin@platform.internal
+wikijs_admin_password: "{{ vault_wikijs_admin_password }}"
+
+# Where WikiJS finds PostgreSQL: its container DNS name on this host's
+# shared rootless network, the same way the keycloak role consumes
+# postgres on idp-01. Values mirror the postgresql role's play-level
+# overrides in apps.yml (user, db, secret) — the database arrives first
+# in that playbook, this role only consumes it. Env var names confirmed
+# against upstream's documented Docker environment variables, not
+# assumed from memory (CLAUDE.md) — DB_PASS, not DB_PASSWORD.
+wikijs_db_host: postgres
+wikijs_db_port: 5432
+wikijs_db_name: wikijs
+wikijs_db_user: wikijs
+wikijs_db_secret_name: postgresql-password
+
+# Bind-mounted content/uploads/config. Owned by the service account on
+# the host; the image entrypoint chowns it to the in-container wiki user
+# inside the user namespace on first boot, same pattern as PostgreSQL.
+wikijs_data_dir: /var/lib/wikijs-data
+
+# Published on the VM's own loopback only, like every other app in this
+# lab — nginx (M3.3, ADR-0007) is the only public-facing thing.
+wikijs_listen_address: 127.0.0.1
+wikijs_http_port: 3000
+wikijs_base_url: "http://{{ wikijs_listen_address }}:{{ wikijs_http_port }}"
+
+# Keycloak OIDC (ADR-0007): idp-01's platform realm, reachable through
+# its own nginx proxy now instead of the loopback-only address the
+# keycloak role publishes it on directly. client_id/secret mirror the
+# keycloak role's keycloak_wikijs_client_id/_client_secret defaults —
+# that role creates the client, this one only consumes it. Endpoint
+# paths are Keycloak's standard per-realm OIDC layout, the same one
+# keycloak/tasks/verify.yml already exercises for its own token check.
+wikijs_oidc_realm_url: "http://{{ groups['idp'] | first }}/realms/platform"
+wikijs_oidc_authorization_url: "{{ wikijs_oidc_realm_url }}/protocol/openid-connect/auth"
+wikijs_oidc_token_url: "{{ wikijs_oidc_realm_url }}/protocol/openid-connect/token"
+wikijs_oidc_userinfo_url: "{{ wikijs_oidc_realm_url }}/protocol/openid-connect/userinfo"
+wikijs_oidc_logout_url: "{{ wikijs_oidc_realm_url }}/protocol/openid-connect/logout"
+wikijs_oidc_client_id: wikijs
+wikijs_oidc_client_secret: "{{ vault_wikijs_oidc_client_secret }}"
+
+# Rootless plumbing (ADR-0004). The service account, its lingering and
+# this host's network belong to the postgresql role, which runs first on
+# app-01 (ansible/playbooks/apps.yml); preflight asserts they exist
+# instead of competing over ownership — the same split the keycloak role
+# uses against postgresql on idp-01.
+wikijs_service_user: svc-app
+
+# passt provides pasta, rootless podman's network backend — listed
+# explicitly because it is only a weak RPM dependency of podman.
+wikijs_packages:
+  - podman
+  - passt

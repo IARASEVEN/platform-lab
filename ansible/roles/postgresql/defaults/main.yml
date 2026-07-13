@@ -4,9 +4,12 @@
 # Hub at implementation time (2026-07); Keycloak 26.6 supports PG 16.
 postgresql_image: docker.io/library/postgres:16.14-alpine
 
-# Single-tenant instance: keycloak is the only role and only database,
-# so it is also the instance superuser — there is nothing else on the
-# instance to protect from it. Both are created by the image's initdb on
+# Single-tenant *instance*: whichever app consumes this role's Postgres
+# on a given host is also that instance's only database and its
+# superuser — there is nothing else on the instance to protect from it.
+# idp-01 uses these defaults as-is (keycloak/keycloak, M3.1); app-01
+# overrides all four at the play level for WikiJS (M3.3) — see
+# ansible/playbooks/apps.yml. Both are created by the image's initdb on
 # first boot, which is also this setup's limitation: the variables are
 # read only when the data directory is empty. verify.yml catches drift.
 postgresql_user: keycloak
@@ -19,21 +22,25 @@ postgresql_password: "{{ vault_postgresql_password }}"
 postgresql_data_dir: /var/lib/postgresql-keycloak
 
 # Published on the VM's own loopback only, for psql/runbook use on the
-# VM itself — Keycloak (M3.2) reaches PostgreSQL over the idp network
-# below instead. The lab network cannot reach it, and no firewalld rule
-# exists on purpose — nothing to open.
+# VM itself — same-host consumers (Keycloak on idp-01, WikiJS on app-01)
+# reach PostgreSQL over the rootless network below instead. The lab
+# network cannot reach it, and no firewalld rule exists on purpose —
+# nothing to open.
 postgresql_listen_address: 127.0.0.1
 postgresql_port: 5432
 
-# The idp stack's shared rootless network (postgres now, Keycloak at
-# M3.2). This role owns the idp.network Quadlet unit because postgres is
-# the first unit on the network; later units reference the same file
-# name and find PostgreSQL under its container DNS name, `postgres`.
+# This host's shared rootless network (postgres arrives first on it;
+# later units on the same host — Keycloak at M3.2, WikiJS at M3.3 — join
+# it and find PostgreSQL under its container DNS name, `postgres`). Each
+# host that runs this role has its own network under this name; they
+# never collide because rootless podman networks are per-user and this
+# role never runs twice on the same host.
 postgresql_network: idp
 
-# Rootless plumbing (ADR-0004). One service account for the whole idp
-# stack: rootless podman networks cannot span users, and the Keycloak
-# container (M3.2) shares the idp network with PostgreSQL. The password
+# Rootless plumbing (ADR-0004). One service account per host stack:
+# rootless podman networks cannot span users, and every container on a
+# given host (Keycloak + PostgreSQL on idp-01; WikiJS + PostgreSQL on
+# app-01) shares its host's one network under one account. The password
 # reaches the container as a podman secret so the unit file itself stays
 # secret-free.
 postgresql_service_user: svc-idp

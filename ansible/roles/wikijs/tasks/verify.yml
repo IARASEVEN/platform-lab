@@ -1,0 +1,84 @@
+---
+# wikijs/tasks/verify.yml — Prove what can actually be proven end to end,
+# and say plainly what can't be. WikiJS's own DB connectivity isn't
+# checked directly (unlike postgresql/keycloak, WikiJS exposes nothing
+# that specifically proves the DB leg the way pg_isready or
+# /health/ready do) — a Node app that can't reach its database exits at
+# boot instead of serving, so the app answering on its port already
+# implies that leg worked.
+- name: Wait for WikiJS to listen on the VM loopback
+  ansible.builtin.wait_for:
+    host: "{{ wikijs_listen_address }}"
+    port: "{{ wikijs_http_port }}"
+    timeout: 60
+
+- name: Check that WikiJS answers over HTTP
+  ansible.builtin.uri:
+    url: "{{ wikijs_base_url }}/"
+    status_code: 200
+  changed_when: false
+
+# activeStrategies is the same unauthenticated GraphQL query WikiJS's own
+# login page calls to decide which login buttons to show — the one thing
+# about auth strategy config this role can actually check without an
+# admin session.
+- name: Query WikiJS's active authentication strategies
+  ansible.builtin.uri:
+    url: "{{ wikijs_base_url }}/graphql"
+    method: POST
+    body_format: json
+    body:
+      query: "{ authentication { activeStrategies(enabledOnly: true) { key displayName } } }"
+    status_code: 200
+  register: wikijs_strategies_check
+  changed_when: false
+
+- name: Identify the non-local (OIDC) strategy, if any
+  ansible.builtin.set_fact:
+    wikijs_oidc_strategies: >-
+      {{ wikijs_strategies_check.json.data.authentication.activeStrategies
+      | rejectattr('key', 'equalto', 'local') | list }}
+
+# Wiki.js has no confirmed, documented non-interactive way to complete
+# its first-run admin setup or add an authentication strategy (checked
+# against community reports at implementation time, not assumed) — that
+# part is a one-time manual step, not something this role writes. This
+# assertion is the honest boundary: it checks the result, it doesn't
+# fake having produced it.
+- name: Assert an OIDC strategy is configured and enabled
+  ansible.builtin.assert:
+    that:
+      - wikijs_oidc_strategies | length > 0
+    fail_msg: >-
+      WikiJS is up but has no non-local authentication strategy enabled
+      yet. Complete "Connecting WikiJS to Keycloak" in
+      services/apps/README.md (Wiki.js's first-run setup and OIDC
+      strategy config have no confirmed non-interactive path — this is a
+      one-time manual step), then re-run `--tags verify`.
+
+- name: Confirm the strategy redirects into Keycloak
+  ansible.builtin.uri:
+    url: "{{ wikijs_base_url }}/login/{{ wikijs_oidc_strategies[0].key }}"
+    follow_redirects: none
+    status_code: 302
+  register: wikijs_oidc_redirect
+  changed_when: false
+  when: wikijs_oidc_strategies | length > 0
+
+# Confirms the wiring, not a login: this proves WikiJS is pointed at the
+# right realm and client, not that a real user can complete the flow —
+# see the "Manual, on purpose" note in services/apps/README.md for the
+# one interactive step this role can't verify itself.
+- name: Assert the redirect targets the platform realm with the right client
+  ansible.builtin.assert:
+    that:
+      - wikijs_oidc_redirect.location is defined
+      - wikijs_oidc_redirect.location is search('^' ~ (wikijs_oidc_authorization_url | regex_escape))
+      - wikijs_oidc_redirect.location is search('client_id=' ~ wikijs_oidc_client_id)
+    fail_msg: >-
+      WikiJS's OIDC strategy exists but its login redirect does not point
+      at the platform realm's authorization endpoint with the wikijs
+      client_id — check the strategy's endpoint URLs and client ID
+      against wikijs_oidc_* in defaults/main.yml and the actual strategy
+      config in WikiJS's admin panel.
+  when: wikijs_oidc_strategies | length > 0
