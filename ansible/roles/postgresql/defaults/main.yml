@@ -1,0 +1,38 @@
+---
+# Image is exact-pinned like every other version in this repo: upgrades
+# are deliberate, not drift. 16.14 was the newest 16.x-alpine on Docker
+# Hub at implementation time (2026-07); Keycloak 26.6 supports PG 16.
+postgresql_image: docker.io/library/postgres:16.14-alpine
+
+# Single-tenant instance: keycloak is the only role and only database,
+# so it is also the instance superuser — there is nothing else on the
+# instance to protect from it. Both are created by the image's initdb on
+# first boot, which is also this setup's limitation: the variables are
+# read only when the data directory is empty. verify.yml catches drift.
+postgresql_user: keycloak
+postgresql_db: keycloak
+postgresql_password: "{{ vault_postgresql_password }}"
+
+# Bind-mounted PGDATA. Owned by the service account on the host; the
+# image entrypoint chowns it to the in-container postgres user inside
+# the user namespace on first boot.
+postgresql_data_dir: /var/lib/postgresql-keycloak
+
+# Published on the VM's own loopback only: psql on idp-01 and (until the
+# M3.2 shared network) Keycloak reach it, the lab network does not. No
+# firewalld rule exists on purpose — nothing to open.
+postgresql_listen_address: 127.0.0.1
+postgresql_port: 5432
+
+# Rootless plumbing (ADR-0004). One service account for the whole idp
+# stack: rootless podman networks cannot span users, and M3.2's Keycloak
+# container must share one with PostgreSQL. The password reaches the
+# container as a podman secret so the unit file itself stays secret-free.
+postgresql_service_user: svc-idp
+postgresql_secret_name: postgresql-password
+
+# passt provides pasta, rootless podman's network backend — listed
+# explicitly because it is only a weak RPM dependency of podman.
+postgresql_packages:
+  - podman
+  - passt

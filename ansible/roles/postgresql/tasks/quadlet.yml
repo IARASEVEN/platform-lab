@@ -1,0 +1,188 @@
+---
+# postgresql/tasks/quadlet.yml — Rootless plumbing, then the unit.
+#
+# Everything that talks to the user-scope podman or systemd instance
+# runs as the service account with XDG_RUNTIME_DIR pointed at its
+# runtime dir — without it, podman and systemctl --user cannot find
+# their sockets. Those tasks are all pipelining-safe modules (command,
+# systemd_service, file); the one task that stages a file on the remote
+# (the unit copy) deliberately runs as root instead, so nothing here
+# needs setfacl to hand Ansible temp files to an unprivileged user.
+
+# A regular account, not --system, on purpose: useradd only allocates
+# the subordinate ID ranges rootless podman needs for regular users.
+# Interactive shell kept for runbook use (`sudo -u svc-idp bash`);
+# the password stays locked and no SSH key ever lands here.
+- name: Create the rootless service account
+  ansible.builtin.user:
+    name: "{{ postgresql_service_user }}"
+    comment: Rootless podman service account for the idp stack
+    shell: /bin/bash
+    password_lock: true
+  register: postgresql_service_account
+
+- name: Record the account's runtime dir for user-scope tasks
+  ansible.builtin.set_fact:
+    postgresql_runtime_dir: "/run/user/{{ postgresql_service_account.uid }}"
+
+- name: Assert the account received subordinate ID ranges
+  ansible.builtin.command:
+    cmd: grep -E '^{{ postgresql_service_user }}:' {{ item }}
+  loop:
+    - /etc/subuid
+    - /etc/subgid
+  register: postgresql_subid_check
+  changed_when: false
+
+# Lingering keeps the user manager (and so the container) running with
+# nobody logged in, and starts it at boot — that is what makes a user
+# unit a service rather than a session artefact.
+- name: Enable lingering for the service account
+  ansible.builtin.command:
+    cmd: loginctl enable-linger {{ postgresql_service_user }}
+  args:
+    creates: /var/lib/systemd/linger/{{ postgresql_service_user }}
+
+- name: Wait for the user manager's D-Bus socket
+  ansible.builtin.wait_for:
+    path: "{{ postgresql_runtime_dir }}/bus"
+    timeout: 30
+
+- name: Check whether the data directory already exists
+  ansible.builtin.stat:
+    path: "{{ postgresql_data_dir }}"
+  register: postgresql_data_dir_stat
+
+# First boot only, then hands off. The image entrypoint chowns PGDATA to
+# the in-container postgres user (a subordinate uid on the host), so
+# re-stamping svc-idp ownership on later runs would map the directory to
+# container *root* and lock every new backend out of it — psql fails
+# with "pg_filenode.map: Permission denied" while pg_isready keeps
+# reporting healthy, because it counts that FATAL as a server response.
+- name: Create the PostgreSQL data directory (first boot only)
+  ansible.builtin.file:
+    path: "{{ postgresql_data_dir }}"
+    state: directory
+    owner: "{{ postgresql_service_user }}"
+    group: "{{ postgresql_service_user }}"
+    mode: "0700"
+  when: not postgresql_data_dir_stat.stat.exists
+
+- name: Check whether the database password secret exists
+  become: true
+  become_user: "{{ postgresql_service_user }}"
+  environment:
+    XDG_RUNTIME_DIR: "{{ postgresql_runtime_dir }}"
+  ansible.builtin.command:
+    cmd: podman secret exists {{ postgresql_secret_name }}
+  register: postgresql_secret_exists
+  failed_when: postgresql_secret_exists.rc not in [0, 1]
+  changed_when: false
+
+# Create-if-absent only: podman reads the secret when the container is
+# created, and PostgreSQL reads POSTGRES_PASSWORD only at first initdb.
+# Rotating the password is therefore a manual runbook operation, not
+# something re-running this role pretends to do.
+- name: Create the database password secret
+  become: true
+  become_user: "{{ postgresql_service_user }}"
+  environment:
+    XDG_RUNTIME_DIR: "{{ postgresql_runtime_dir }}"
+  ansible.builtin.command:
+    cmd: podman secret create {{ postgresql_secret_name }} -
+    stdin: "{{ postgresql_password }}"
+    stdin_add_newline: false
+  when: postgresql_secret_exists.rc == 1
+  register: postgresql_secret_created
+  changed_when: true
+  no_log: true
+
+- name: Check whether the PostgreSQL image is present
+  become: true
+  become_user: "{{ postgresql_service_user }}"
+  environment:
+    XDG_RUNTIME_DIR: "{{ postgresql_runtime_dir }}"
+  ansible.builtin.command:
+    cmd: podman image exists {{ postgresql_image }}
+  register: postgresql_image_exists
+  failed_when: postgresql_image_exists.rc not in [0, 1]
+  changed_when: false
+
+# Pre-pulled so the first systemctl start does not spend its start
+# timeout downloading, and pulled as the service user — rootless image
+# storage is per-user.
+- name: Pull the pinned PostgreSQL image
+  become: true
+  become_user: "{{ postgresql_service_user }}"
+  environment:
+    XDG_RUNTIME_DIR: "{{ postgresql_runtime_dir }}"
+  ansible.builtin.command:
+    cmd: podman pull {{ postgresql_image }}
+  when: postgresql_image_exists.rc == 1
+  register: postgresql_image_pulled
+  changed_when: true
+
+# Created as the service user so the intermediate ~/.config levels end
+# up owned by it, not by root.
+- name: Create the Quadlet directory
+  become: true
+  become_user: "{{ postgresql_service_user }}"
+  ansible.builtin.file:
+    path: "{{ postgresql_service_account.home }}/.config/containers/systemd"
+    state: directory
+    mode: "0755"
+
+# Runs as root (copy stages a temp file; root can chown it over) with
+# ownership handed to the service user, whose systemd instance is the
+# one that reads it. The generated service is postgres.service; Quadlet
+# units cannot be `systemctl enable`d — boot-start is [Install] plus
+# lingering.
+- name: Install the postgres.container Quadlet unit
+  ansible.builtin.copy:
+    dest: >-
+      {{ postgresql_service_account.home
+      }}/.config/containers/systemd/postgres.container
+    owner: "{{ postgresql_service_user }}"
+    group: "{{ postgresql_service_user }}"
+    mode: "0600"
+    content: |
+      # Managed by Ansible (postgresql role) — edits are overwritten.
+      [Unit]
+      Description=PostgreSQL for Keycloak (M3.1)
+
+      [Container]
+      ContainerName=postgres
+      Image={{ postgresql_image }}
+      Environment=POSTGRES_USER={{ postgresql_user }}
+      Environment=POSTGRES_DB={{ postgresql_db }}
+      Secret={{ postgresql_secret_name }},type=env,target=POSTGRES_PASSWORD
+      Volume={{ postgresql_data_dir }}:/var/lib/postgresql/data:Z
+      PublishPort={{ postgresql_listen_address }}:{{ postgresql_port }}:5432
+      HealthCmd=pg_isready -U {{ postgresql_user }} -d {{ postgresql_db }}
+      HealthInterval=10s
+      Notify=healthy
+
+      [Service]
+      Restart=on-failure
+
+      [Install]
+      WantedBy=default.target
+  register: postgresql_quadlet_unit
+
+# daemon_reload makes the Quadlet generator re-render the unit before
+# systemd acts on it. Restart only when the unit or the secret actually
+# changed — a plain re-run must not bounce the database.
+- name: Reload systemd and start PostgreSQL
+  become: true
+  become_user: "{{ postgresql_service_user }}"
+  environment:
+    XDG_RUNTIME_DIR: "{{ postgresql_runtime_dir }}"
+  ansible.builtin.systemd_service:
+    name: postgres.service
+    scope: user
+    daemon_reload: true
+    state: >-
+      {{ 'restarted'
+         if postgresql_quadlet_unit is changed
+            or postgresql_secret_created is changed
+         else 'started' }}

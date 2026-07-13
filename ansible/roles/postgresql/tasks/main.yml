@@ -1,0 +1,23 @@
+---
+# PostgreSQL for Keycloak as a rootless Podman Quadlet (ADR-0004) — the
+# first container of the M3 SSO stack. Order matters: preflight fails
+# fast without vault secrets, packages must land before any podman
+# command runs, quadlet does the rootless plumbing and starts the unit
+# (Notify=healthy — start only returns once the server answers), and
+# verify proves port, readiness and password auth on every run, so
+# `--tags verify` re-runs just the health checks like the FreeIPA roles.
+- name: Run preflight checks
+  ansible.builtin.import_tasks: preflight.yml
+  tags: [preflight]
+
+- name: Install the container runtime
+  ansible.builtin.import_tasks: packages.yml
+  tags: [packages]
+
+- name: Deploy the PostgreSQL Quadlet
+  ansible.builtin.import_tasks: quadlet.yml
+  tags: [quadlet]
+
+- name: Verify PostgreSQL end to end
+  ansible.builtin.import_tasks: verify.yml
+  tags: [verify]

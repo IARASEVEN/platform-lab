@@ -1,0 +1,24 @@
+---
+# postgresql/tasks/packages.yml — Container runtime, nothing else. The
+# PostgreSQL server itself arrives as an image, not a package.
+- name: Install podman and its rootless network backend
+  ansible.builtin.dnf:
+    name: "{{ postgresql_packages }}"
+    state: present
+
+- name: Capture the podman version
+  ansible.builtin.command:
+    cmd: podman --version
+  register: postgresql_podman_version
+  changed_when: false
+
+# The Quadlet below relies on Notify=healthy (podman >= 4.9) so systemd
+# only reports the unit started once pg_isready succeeds. Rocky 9.8
+# ships podman 5.x; this assert is for the day that stops being true.
+- name: Assert podman is new enough for Quadlet Notify=healthy
+  ansible.builtin.assert:
+    that:
+      - postgresql_podman_version.stdout.split() | last is version("4.9", ">=")
+    fail_msg: >-
+      podman {{ postgresql_podman_version.stdout }} predates Quadlet
+      Notify=healthy support (4.9); the unit would never leave "activating".

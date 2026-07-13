@@ -1,0 +1,69 @@
+---
+# postgresql/tasks/verify.yml — Prove it the way Keycloak will use it:
+# port bound on the loopback, server ready, and a real password login
+# over TCP that exercises the scram path. Resolves the service account
+# itself so `--tags verify` works standalone, like the FreeIPA roles.
+- name: Resolve the rootless service account
+  ansible.builtin.getent:
+    database: passwd
+    key: "{{ postgresql_service_user }}"
+
+- name: Record the account's runtime dir for user-scope checks
+  ansible.builtin.set_fact:
+    postgresql_runtime_dir: >-
+      /run/user/{{
+        ansible_facts.getent_passwd[postgresql_service_user][1] }}
+
+- name: Wait for PostgreSQL to listen on the VM loopback
+  ansible.builtin.wait_for:
+    host: "{{ postgresql_listen_address }}"
+    port: "{{ postgresql_port }}"
+    timeout: 60
+
+# Liveness only: pg_isready counts any server response — even a FATAL
+# from a dying backend — as "accepting connections". The psql login
+# below is the check that actually proves sessions work.
+- name: Check server readiness inside the container
+  become: true
+  become_user: "{{ postgresql_service_user }}"
+  environment:
+    XDG_RUNTIME_DIR: "{{ postgresql_runtime_dir }}"
+  ansible.builtin.command:
+    cmd: >-
+      podman exec postgres
+      pg_isready -U {{ postgresql_user }} -d {{ postgresql_db }}
+  register: postgresql_ready_check
+  changed_when: false
+
+# Not loopback: initdb's default `host ... 127.0.0.1/32 trust` line
+# outranks the entrypoint's appended scram rule, so an in-container
+# loopback login "succeeds" with any password. The container's own
+# eth0 address falls through to `host all all all scram-sha-256` — the
+# same path Keycloak's connections will take. `-e PGPASSWORD` copies
+# the variable from the environment Ansible sets on the task, so the
+# password never appears on a command line.
+- name: Prove password auth over TCP as the keycloak role
+  become: true
+  become_user: "{{ postgresql_service_user }}"
+  environment:
+    XDG_RUNTIME_DIR: "{{ postgresql_runtime_dir }}"
+    PGPASSWORD: "{{ postgresql_password }}"
+  ansible.builtin.command:
+    cmd: >-
+      podman exec -e PGPASSWORD postgres sh -c
+      'exec psql -h "$(hostname -i)" -p 5432
+      -U {{ postgresql_user }} -d {{ postgresql_db }}
+      -tAc "SELECT current_user"'
+  register: postgresql_auth_check
+  changed_when: false
+  no_log: true
+
+- name: Assert the keycloak role answered from its database
+  ansible.builtin.assert:
+    that:
+      - postgresql_auth_check.stdout | trim == postgresql_user
+    fail_msg: >-
+      PostgreSQL is up but the password login as
+      '{{ postgresql_user }}' against '{{ postgresql_db }}' did not
+      return the expected role — the instance likely predates the
+      current vault password (env vars only apply at first initdb).

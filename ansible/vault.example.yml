@@ -11,3 +11,6 @@ vault_freeipa_dm_password: "CHANGE_ME_32_chars_min"
 vault_freeipa_admin_password: "CHANGE_ME_32_chars_min"
 # Final password shared by the alice/bob HBAC demo users (hbac_setup role).
 vault_demo_user_password: "CHANGE_ME_32_chars_min"
+# Superuser password of the single-tenant PostgreSQL instance on idp-01
+# (postgresql role). keycloak is its only role and its only database.
+vault_postgresql_password: "CHANGE_ME_32_chars_min"
