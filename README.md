@@ -19,15 +19,17 @@ the running lab is disposable by design.
 
 ## Status
 
-**Pre-M1.** The scaffold, CI (lint + secrets scanning), and the first five
-architecture decisions are in place. Nothing boots yet. The milestone table
-below is the honest state of the work.
+**M1 complete, M3 in progress.** Identity core — FreeIPA, DNS, CA, HBAC
+deny-by-default, sudo rules, Ansible — is done and boots with one command.
+Keycloak is running on `idp-01`, federated to FreeIPA over LDAP; the rest of
+M3 (versioned realm export, Grafana's migration from LDAP to OIDC) is still
+ahead. The milestone table below is the honest state of the work.
 
 | Milestone | Contents | Status |
 |---|---|---|
-| **M1 — identity core** | Terraform + cloud-init, FreeIPA on Rocky 9, DNS, CA, HBAC deny-by-default, sudo rules, Ansible | next |
+| **M1 — identity core** | Terraform + cloud-init, FreeIPA on Rocky 9, DNS, CA, HBAC deny-by-default, sudo rules, Ansible | ✅ complete |
 | **M2 — observability** | Prometheus, Grafana, Loki, Alloy, Alertmanager, exporters, SLOs, runbooks | planned |
-| **M3 — keycloak federation** | Keycloak federated to FreeIPA, versioned realm export, Grafana migrated from LDAP to OIDC | planned |
+| **M3 — keycloak federation** | Keycloak federated to FreeIPA, versioned realm export, Grafana migrated from LDAP to OIDC | 🔄 in progress (70%) |
 | **M4 — cert exporter** | Go exporter for FreeIPA certificate expiry, tests, Prometheus alert, renewal runbook | planned |
 | **M5 — CI, docs, demo** | Full pipeline, architecture diagram, ADR set, asciinema demo, final README | planned |
 
@@ -87,8 +89,11 @@ a 16 GB machine can still run any single profile.
 
 ## Running it
 
-> Nothing boots yet (see [Status](#status)). This section describes the
-> intended interface; it becomes real at M1.
+`make identity` is ready: it provisions and configures the whole identity
+profile end to end — FreeIPA, DNS, CA, HBAC deny-by-default, sudo rules, the
+enrolled client, and (M3, in progress) Keycloak federated to FreeIPA on
+`idp-01`. `make observability` and `make apps` are not implemented yet (see
+[Status](#status)).
 
 The Makefile is the only human interface:
 
