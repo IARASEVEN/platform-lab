@@ -18,16 +18,24 @@ postgresql_password: "{{ vault_postgresql_password }}"
 # the user namespace on first boot.
 postgresql_data_dir: /var/lib/postgresql-keycloak
 
-# Published on the VM's own loopback only: psql on idp-01 and (until the
-# M3.2 shared network) Keycloak reach it, the lab network does not. No
-# firewalld rule exists on purpose — nothing to open.
+# Published on the VM's own loopback only, for psql/runbook use on the
+# VM itself — Keycloak (M3.2) reaches PostgreSQL over the idp network
+# below instead. The lab network cannot reach it, and no firewalld rule
+# exists on purpose — nothing to open.
 postgresql_listen_address: 127.0.0.1
 postgresql_port: 5432
 
+# The idp stack's shared rootless network (postgres now, Keycloak at
+# M3.2). This role owns the idp.network Quadlet unit because postgres is
+# the first unit on the network; later units reference the same file
+# name and find PostgreSQL under its container DNS name, `postgres`.
+postgresql_network: idp
+
 # Rootless plumbing (ADR-0004). One service account for the whole idp
-# stack: rootless podman networks cannot span users, and M3.2's Keycloak
-# container must share one with PostgreSQL. The password reaches the
-# container as a podman secret so the unit file itself stays secret-free.
+# stack: rootless podman networks cannot span users, and the Keycloak
+# container (M3.2) shares the idp network with PostgreSQL. The password
+# reaches the container as a podman secret so the unit file itself stays
+# secret-free.
 postgresql_service_user: svc-idp
 postgresql_secret_name: postgresql-password
 

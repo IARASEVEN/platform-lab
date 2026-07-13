@@ -132,6 +132,24 @@
     state: directory
     mode: "0755"
 
+# The stack's shared network as a Quadlet unit of its own. Quadlet turns
+# Network=idp.network into a dependency on idp-network.service, which
+# creates the named network on first use — this file only has to exist
+# before the container units that reference it are generated.
+- name: Install the idp.network Quadlet unit
+  ansible.builtin.copy:
+    dest: >-
+      {{ postgresql_service_account.home
+      }}/.config/containers/systemd/idp.network
+    owner: "{{ postgresql_service_user }}"
+    group: "{{ postgresql_service_user }}"
+    mode: "0600"
+    content: |
+      # Managed by Ansible (postgresql role) — edits are overwritten.
+      [Network]
+      NetworkName={{ postgresql_network }}
+  register: postgresql_network_unit
+
 # Runs as root (copy stages a temp file; root can chown it over) with
 # ownership handed to the service user, whose systemd instance is the
 # one that reads it. The generated service is postgres.service; Quadlet
@@ -153,6 +171,7 @@
       [Container]
       ContainerName=postgres
       Image={{ postgresql_image }}
+      Network=idp.network
       Environment=POSTGRES_USER={{ postgresql_user }}
       Environment=POSTGRES_DB={{ postgresql_db }}
       Secret={{ postgresql_secret_name }},type=env,target=POSTGRES_PASSWORD
@@ -170,8 +189,8 @@
   register: postgresql_quadlet_unit
 
 # daemon_reload makes the Quadlet generator re-render the unit before
-# systemd acts on it. Restart only when the unit or the secret actually
-# changed — a plain re-run must not bounce the database.
+# systemd acts on it. Restart only when a unit file or the secret
+# actually changed — a plain re-run must not bounce the database.
 - name: Reload systemd and start PostgreSQL
   become: true
   become_user: "{{ postgresql_service_user }}"
@@ -184,5 +203,6 @@
     state: >-
       {{ 'restarted'
          if postgresql_quadlet_unit is changed
+            or postgresql_network_unit is changed
             or postgresql_secret_created is changed
          else 'started' }}
