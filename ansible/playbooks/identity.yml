@@ -52,3 +52,15 @@
     - ../vault.yml
   roles:
     - postgresql
+
+# Keycloak consumes what the play above created — the service account,
+# the idp network, the database — and what the ipa plays created: the
+# 389-ds tree it federates to (ADR-0006).
+- name: Deploy Keycloak federated to FreeIPA (M3.2)
+  hosts: idp
+  become: true
+  gather_facts: true
+  vars_files:
+    - ../vault.yml
+  roles:
+    - keycloak

@@ -1,0 +1,28 @@
+---
+# Keycloak as a rootless Podman Quadlet (ADR-0004) beside M3.1's
+# PostgreSQL, federated to FreeIPA over LDAP (ADR-0006). Order matters:
+# preflight fails fast without vault secrets or the database, packages
+# must land before any podman command runs, quadlet starts the unit
+# (Notify=healthy — start only returns once /health/ready answers),
+# ldap_federation drives the admin API idempotently, and verify proves
+# the realm and a real federated login on every run, so `--tags verify`
+# re-runs just the health checks like the other roles here.
+- name: Run preflight checks
+  ansible.builtin.import_tasks: preflight.yml
+  tags: [preflight]
+
+- name: Install the container runtime
+  ansible.builtin.import_tasks: packages.yml
+  tags: [packages]
+
+- name: Deploy the Keycloak Quadlet
+  ansible.builtin.import_tasks: quadlet.yml
+  tags: [quadlet]
+
+- name: Federate the platform realm to FreeIPA
+  ansible.builtin.import_tasks: ldap_federation.yml
+  tags: [ldap_federation]
+
+- name: Verify Keycloak end to end
+  ansible.builtin.import_tasks: verify.yml
+  tags: [verify]

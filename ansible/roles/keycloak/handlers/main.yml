@@ -1,0 +1,37 @@
+---
+# keycloak/handlers/main.yml — The one-off full user import, fired only
+# when the LDAP provider is created or reconfigured and flushed by
+# ldap_federation.yml before verify runs. Two handlers on one topic
+# because the sync call needs a fresh admin token first; handlers run
+# in this file's order. Day to day, new IPA users arrive on demand at
+# their first login (importEnabled), not by periodic sync.
+- name: Obtain an admin API token for the sync trigger
+  ansible.builtin.uri:
+    url: "{{ keycloak_base_url }}/realms/master/protocol/openid-connect/token"
+    method: POST
+    body_format: form-urlencoded
+    body:
+      grant_type: password
+      client_id: admin-cli
+      username: "{{ keycloak_admin_user }}"
+      password: "{{ keycloak_admin_password }}"
+  register: keycloak_admin_token
+  changed_when: false
+  no_log: true
+  listen: keycloak_full_sync
+
+# The federation module has no sync action (checked against
+# community.general 13.1.0), so the trigger goes straight to the admin
+# REST API, addressed by the component id the module returned.
+- name: Trigger a full user sync from FreeIPA
+  ansible.builtin.uri:
+    url: >-
+      {{ keycloak_base_url }}/admin/realms/{{ keycloak_realm
+      }}/user-storage/{{ keycloak_federation.end_state.id
+      }}/sync?action=triggerFullSync
+    method: POST
+    headers:
+      Authorization: "Bearer {{ keycloak_admin_token.json.access_token }}"
+  changed_when: true
+  no_log: true
+  listen: keycloak_full_sync

@@ -1,0 +1,72 @@
+---
+# Image is exact-pinned like every other version in this repo: upgrades
+# are deliberate, not drift. 26.6.4 was the newest 26.6.x on quay.io at
+# implementation time (2026-07); CLAUDE.md pins Keycloak to 26.6.x.
+keycloak_image: quay.io/keycloak/keycloak:26.6.4
+
+# Bootstrap admin of the master realm. The KEYCLOAK_ADMIN variables are
+# deprecated since Keycloak 26 — the unit uses KC_BOOTSTRAP_ADMIN_* and
+# the password reaches the container as a podman secret. Keycloak reads
+# them only while its database is empty: rotating the admin password is
+# an admin-console operation, not something re-running this role does.
+keycloak_admin_user: admin
+keycloak_admin_password: "{{ vault_keycloak_admin_password }}"
+keycloak_admin_secret_name: keycloak-admin-password
+
+# The application realm. master stays admin-only; everything the
+# platform federates now or authenticates via OIDC later lives here.
+keycloak_realm: platform
+
+# Domain and base DN mirror ADR-0003, derived, never hardcoded — the
+# same single-source-of-truth story as the other identity roles.
+keycloak_domain: platform.internal
+keycloak_ldap_base_dn: "dc={{ keycloak_domain.split('.') | join(',dc=') }}"
+
+# LDAP federation against FreeIPA's 389-ds (ADR-0006). The server comes
+# from the generated `ipa` service group, never hardcoded. Plain ldap://
+# and the IPA admin as bind account are deliberate lab shortcuts —
+# ADR-0006 lists both as limitations, with the hardening path.
+keycloak_ldap_url: "ldap://{{ groups['ipa'] | first }}:389"
+keycloak_ldap_users_dn: "cn=users,cn=accounts,{{ keycloak_ldap_base_dn }}"
+keycloak_ldap_bind_dn: "uid=admin,cn=users,cn=accounts,{{ keycloak_ldap_base_dn }}"
+keycloak_ldap_bind_password: "{{ vault_freeipa_admin_password }}"
+keycloak_ldap_federation_name: freeipa-ldap
+
+# Where Keycloak finds PostgreSQL: its container DNS name on the shared
+# idp network. Values mirror the postgresql role's defaults (user, db,
+# secret) — the database arrived at M3.1, this role only consumes it.
+keycloak_db_host: postgres
+keycloak_db_port: 5432
+keycloak_db_name: keycloak
+keycloak_db_user: keycloak
+keycloak_db_secret_name: postgresql-password
+
+# Published on the VM's own loopback only, like PostgreSQL: the verify
+# tasks and an SSH tunnel to the admin console reach it, the lab network
+# does not. Nothing consumes Keycloak remotely yet; M3.3+ opens access
+# deliberately when the reverse proxy and the OIDC clients arrive.
+keycloak_listen_address: 127.0.0.1
+keycloak_http_port: 8080
+keycloak_base_url: "http://{{ keycloak_listen_address }}:{{ keycloak_http_port }}"
+
+# Fixed heap instead of the image default (a percentage of all visible
+# RAM): the 3 GB VM is shared with PostgreSQL and the OS.
+keycloak_java_heap: -Xms256m -Xmx1024m
+
+# End-to-end federation probe for verify.yml: alice exists only in
+# FreeIPA (created by the hbac_setup role at M1.5), so a password grant
+# for her proves the Keycloak -> 389-ds bind path, not a local account.
+keycloak_verify_user: alice
+keycloak_verify_password: "{{ vault_demo_user_password }}"
+
+# Rootless plumbing (ADR-0004). The service account, its lingering and
+# the idp network all belong to the postgresql role, which runs first on
+# this host; preflight asserts they exist instead of competing over
+# ownership.
+keycloak_service_user: svc-idp
+
+# passt provides pasta, rootless podman's network backend — listed
+# explicitly because it is only a weak RPM dependency of podman.
+keycloak_packages:
+  - podman
+  - passt

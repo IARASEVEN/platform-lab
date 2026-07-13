@@ -1,0 +1,109 @@
+---
+# keycloak/tasks/ldap_federation.yml — The platform realm, federated to
+# FreeIPA's 389-ds (ADR-0006). Everything drives the admin REST API on
+# the VM loopback through community.general's keycloak modules, which
+# are idempotent compare-then-write clients. master stays admin-only.
+- name: Create the platform realm
+  community.general.keycloak_realm:
+    auth_keycloak_url: "{{ keycloak_base_url }}"
+    auth_realm: master
+    auth_username: "{{ keycloak_admin_user }}"
+    auth_password: "{{ keycloak_admin_password }}"
+    id: "{{ keycloak_realm }}"
+    realm: "{{ keycloak_realm }}"
+    enabled: true
+    state: present
+
+# READ_ONLY + importEnabled: FreeIPA stays the single source of truth;
+# Keycloak keeps an imported shadow it never writes back. vendor rhds
+# matches 389-ds (nsuniqueid exists on every entry). trustEmail because
+# IPA autogenerates mail=uid@domain and is authoritative for it.
+# searchScope stays one-level: cn=users is flat. Referrals keep
+# Keycloak's filtered-by-default handling (the 26.2 CVE mitigation) —
+# a single-suffix IPA tree never emits any. The whole task is no_log:
+# bindCredential is the IPA admin password. The notified handlers run
+# the one-off full import when the provider is created or reconfigured.
+- name: Federate the platform realm to FreeIPA over LDAP
+  community.general.keycloak_user_federation:
+    auth_keycloak_url: "{{ keycloak_base_url }}"
+    auth_realm: master
+    auth_username: "{{ keycloak_admin_user }}"
+    auth_password: "{{ keycloak_admin_password }}"
+    realm: "{{ keycloak_realm }}"
+    name: "{{ keycloak_ldap_federation_name }}"
+    state: present
+    provider_id: ldap
+    provider_type: org.keycloak.storage.UserStorageProvider
+    config:
+      enabled: true
+      priority: 0
+      vendor: rhds
+      connectionUrl: "{{ keycloak_ldap_url }}"
+      usersDn: "{{ keycloak_ldap_users_dn }}"
+      authType: simple
+      bindDn: "{{ keycloak_ldap_bind_dn }}"
+      bindCredential: "{{ keycloak_ldap_bind_password }}"
+      editMode: READ_ONLY
+      importEnabled: true
+      syncRegistrations: false
+      usernameLDAPAttribute: uid
+      rdnLDAPAttribute: uid
+      uuidLDAPAttribute: nsuniqueid
+      userObjectClasses: inetOrgPerson, organizationalPerson
+      searchScope: 1
+      pagination: true
+      trustEmail: true
+    # Attribute mappers the Admin Console attaches automatically when you
+    # save the "add provider" wizard — creating the provider through the
+    # REST API instead (as this task does) skips that step, and without a
+    # username mapper Keycloak never asks 389-ds for `uid` at all: every
+    # import fails with "User returned from LDAP has null username!" even
+    # though the DN it just matched is uid=<name>,.... givenName/sn/mail
+    # are FreeIPA's standard inetOrgPerson attributes (set by `ipa
+    # user-add --first/--last`, the hbac_setup role's demo users included).
+    mappers:
+      - name: username
+        providerId: user-attribute-ldap-mapper
+        providerType: org.keycloak.storage.ldap.mappers.LDAPStorageMapper
+        config:
+          ldap.attribute: uid
+          user.model.attribute: username
+          read.only: true
+          always.read.value.from.ldap: true
+          is.mandatory.in.ldap: true
+      - name: first name
+        providerId: user-attribute-ldap-mapper
+        providerType: org.keycloak.storage.ldap.mappers.LDAPStorageMapper
+        config:
+          ldap.attribute: givenName
+          user.model.attribute: firstName
+          read.only: true
+          always.read.value.from.ldap: true
+          is.mandatory.in.ldap: false
+      - name: last name
+        providerId: user-attribute-ldap-mapper
+        providerType: org.keycloak.storage.ldap.mappers.LDAPStorageMapper
+        config:
+          ldap.attribute: sn
+          user.model.attribute: lastName
+          read.only: true
+          always.read.value.from.ldap: true
+          is.mandatory.in.ldap: false
+      - name: email
+        providerId: user-attribute-ldap-mapper
+        providerType: org.keycloak.storage.ldap.mappers.LDAPStorageMapper
+        config:
+          ldap.attribute: mail
+          user.model.attribute: email
+          read.only: true
+          always.read.value.from.ldap: true
+          is.mandatory.in.ldap: false
+  register: keycloak_federation
+  notify: keycloak_full_sync
+  no_log: true
+
+# Handlers normally run at the end of the play — too late here: verify
+# must observe this run's sync. Flushing now also means a later verify
+# failure cannot eat a pending sync that would never re-fire.
+- name: Flush the full-sync handlers before verify
+  ansible.builtin.meta: flush_handlers

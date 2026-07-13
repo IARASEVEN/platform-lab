@@ -8,3 +8,7 @@
 collections:
   - name: ansible.posix
     version: 2.2.0
+  # keycloak_realm / keycloak_user_federation: idempotent admin-API
+  # clients for the M3 federation (keycloak role).
+  - name: community.general
+    version: 13.1.0

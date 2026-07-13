@@ -1,0 +1,25 @@
+---
+# keycloak/tasks/packages.yml — Container runtime, nothing else. Keycloak
+# itself arrives as an image, not a package. Idempotent duplicate of the
+# postgresql role's install on purpose: each role stays runnable alone.
+- name: Install podman and its rootless network backend
+  ansible.builtin.dnf:
+    name: "{{ keycloak_packages }}"
+    state: present
+
+- name: Capture the podman version
+  ansible.builtin.command:
+    cmd: podman --version
+  register: keycloak_podman_version
+  changed_when: false
+
+# The Quadlet below relies on Notify=healthy (podman >= 4.9) so systemd
+# only reports the unit started once /health/ready succeeds. Rocky 9.8
+# ships podman 5.x; this assert is for the day that stops being true.
+- name: Assert podman is new enough for Quadlet Notify=healthy
+  ansible.builtin.assert:
+    that:
+      - keycloak_podman_version.stdout.split() | last is version("4.9", ">=")
+    fail_msg: >-
+      podman {{ keycloak_podman_version.stdout }} predates Quadlet
+      Notify=healthy support (4.9); the unit would never leave "activating".

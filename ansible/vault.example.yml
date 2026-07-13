@@ -14,3 +14,7 @@ vault_demo_user_password: "CHANGE_ME_32_chars_min"
 # Superuser password of the single-tenant PostgreSQL instance on idp-01
 # (postgresql role). keycloak is its only role and its only database.
 vault_postgresql_password: "CHANGE_ME_32_chars_min"
+# Bootstrap admin of Keycloak's master realm (keycloak role). Keycloak
+# reads it only while its database is empty — rotate via the admin
+# console afterwards, not by changing this value.
+vault_keycloak_admin_password: "CHANGE_ME_32_chars_min"

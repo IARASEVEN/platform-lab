@@ -1,0 +1,193 @@
+---
+# keycloak/tasks/quadlet.yml — Rootless plumbing, then the unit. Same
+# split as the postgresql role: everything that talks to the user-scope
+# podman or systemd instance runs as the service account with
+# XDG_RUNTIME_DIR set; the unit copy runs as root. The account, its
+# lingering and the idp network belong to the postgresql role — this
+# role only resolves them.
+- name: Resolve the rootless service account
+  ansible.builtin.getent:
+    database: passwd
+    key: "{{ keycloak_service_user }}"
+
+- name: Record the account's runtime dir and home for user-scope tasks
+  ansible.builtin.set_fact:
+    keycloak_runtime_dir: >-
+      /run/user/{{ ansible_facts.getent_passwd[keycloak_service_user][1] }}
+    keycloak_service_home: >-
+      {{ ansible_facts.getent_passwd[keycloak_service_user][4] }}
+
+# Lingering (enabled by the postgresql role) starts the user manager at
+# boot; if this times out, that role has not run on this host.
+- name: Wait for the user manager's D-Bus socket
+  ansible.builtin.wait_for:
+    path: "{{ keycloak_runtime_dir }}/bus"
+    timeout: 30
+
+- name: Check whether the admin bootstrap secret exists
+  become: true
+  become_user: "{{ keycloak_service_user }}"
+  environment:
+    XDG_RUNTIME_DIR: "{{ keycloak_runtime_dir }}"
+  ansible.builtin.command:
+    cmd: podman secret exists {{ keycloak_admin_secret_name }}
+  register: keycloak_secret_exists
+  failed_when: keycloak_secret_exists.rc not in [0, 1]
+  changed_when: false
+
+# Create-if-absent only: podman reads the secret when the container is
+# created, and Keycloak reads KC_BOOTSTRAP_ADMIN_* only while its
+# database is empty. Rotating the admin password is an admin-console
+# operation, not something re-running this role pretends to do.
+- name: Create the admin bootstrap secret
+  become: true
+  become_user: "{{ keycloak_service_user }}"
+  environment:
+    XDG_RUNTIME_DIR: "{{ keycloak_runtime_dir }}"
+  ansible.builtin.command:
+    cmd: podman secret create {{ keycloak_admin_secret_name }} -
+    stdin: "{{ keycloak_admin_password }}"
+    stdin_add_newline: false
+  when: keycloak_secret_exists.rc == 1
+  register: keycloak_secret_created
+  changed_when: true
+  no_log: true
+
+# The unit below also mounts the database password secret created by
+# the postgresql role (M3.1). Fail here with a pointer instead of
+# letting systemd fail the start with a generic missing-secret error.
+- name: Assert the database password secret exists
+  become: true
+  become_user: "{{ keycloak_service_user }}"
+  environment:
+    XDG_RUNTIME_DIR: "{{ keycloak_runtime_dir }}"
+  ansible.builtin.command:
+    cmd: podman secret exists {{ keycloak_db_secret_name }}
+  register: keycloak_db_secret_check
+  changed_when: false
+  failed_when: keycloak_db_secret_check.rc != 0
+
+- name: Check whether the Keycloak image is present
+  become: true
+  become_user: "{{ keycloak_service_user }}"
+  environment:
+    XDG_RUNTIME_DIR: "{{ keycloak_runtime_dir }}"
+  ansible.builtin.command:
+    cmd: podman image exists {{ keycloak_image }}
+  register: keycloak_image_exists
+  failed_when: keycloak_image_exists.rc not in [0, 1]
+  changed_when: false
+
+# Pre-pulled so the first systemctl start does not spend its start
+# timeout downloading, and pulled as the service user — rootless image
+# storage is per-user.
+- name: Pull the pinned Keycloak image
+  become: true
+  become_user: "{{ keycloak_service_user }}"
+  environment:
+    XDG_RUNTIME_DIR: "{{ keycloak_runtime_dir }}"
+  ansible.builtin.command:
+    cmd: podman pull {{ keycloak_image }}
+  when: keycloak_image_exists.rc == 1
+  register: keycloak_image_pulled
+  changed_when: true
+
+# Exists already on any host where postgresql ran; kept so the role
+# also stands alone, and created as the service user so intermediate
+# ~/.config levels end up owned by it, not by root.
+- name: Create the Quadlet directory
+  become: true
+  become_user: "{{ keycloak_service_user }}"
+  ansible.builtin.file:
+    path: "{{ keycloak_service_home }}/.config/containers/systemd"
+    state: directory
+    mode: "0755"
+
+# Runs as root (copy stages a temp file; root can chown it over) with
+# ownership handed to the service user, whose systemd instance reads
+# it. The generated service is keycloak.service; boot-start is
+# [Install] plus lingering, as with postgres.
+#
+# Notes pinned to verified 26.6 behaviour, not memory (CLAUDE.md):
+# KEYCLOAK_ADMIN is deprecated for KC_BOOTSTRAP_ADMIN_*; health lives
+# on the management interface (9000) and needs KC_HEALTH_ENABLED; the
+# image ships no curl, so the probe is keycloak.org's bash /dev/tcp
+# idiom (the image's /bin/sh is bash); proxy headers are deliberately
+# NOT configured — there is no proxy until M3.3, and trusting
+# X-Forwarded-* without one would let any client spoof its address.
+- name: Install the keycloak.container Quadlet unit
+  ansible.builtin.copy:
+    dest: >-
+      {{ keycloak_service_home
+      }}/.config/containers/systemd/keycloak.container
+    owner: "{{ keycloak_service_user }}"
+    group: "{{ keycloak_service_user }}"
+    mode: "0600"
+    content: |
+      # Managed by Ansible (keycloak role) — edits are overwritten.
+      [Unit]
+      Description=Keycloak (M3.2)
+      # Wants, not Requires: Restart=on-failure already rides out a
+      # database that is briefly away, without turning every postgres
+      # restart into a hard stop of Keycloak.
+      Wants=postgres.service
+      After=postgres.service
+
+      [Container]
+      ContainerName=keycloak
+      Image={{ keycloak_image }}
+      # Production mode, never start-dev. Runtime-only config: build
+      # options (db vendor, health) auto-build on first start.
+      Exec=start
+      Network=idp.network
+      PublishPort={{ keycloak_listen_address }}:{{ keycloak_http_port }}:8080
+      Environment=KC_DB=postgres
+      Environment=KC_DB_URL_HOST={{ keycloak_db_host }}
+      Environment=KC_DB_URL_PORT={{ keycloak_db_port }}
+      Environment=KC_DB_URL_DATABASE={{ keycloak_db_name }}
+      Environment=KC_DB_USERNAME={{ keycloak_db_user }}
+      # Plain HTTP inside the lab NAT, loopback-published only. Strict
+      # hostname is off because Keycloak is reached under several names
+      # (loopback tunnel today, the M3.3 reverse proxy tomorrow) — the
+      # proxy hardens this with a stable URL.
+      Environment=KC_HTTP_ENABLED=true
+      Environment=KC_HOSTNAME_STRICT=false
+      Environment=KC_HEALTH_ENABLED=true
+      Environment=KC_BOOTSTRAP_ADMIN_USERNAME={{ keycloak_admin_user }}
+      Environment="JAVA_OPTS_KC_HEAP={{ keycloak_java_heap }}"
+      Secret={{ keycloak_admin_secret_name }},type=env,target=KC_BOOTSTRAP_ADMIN_PASSWORD
+      Secret={{ keycloak_db_secret_name }},type=env,target=KC_DB_PASSWORD
+      HealthCmd={ printf 'HEAD /health/ready HTTP/1.0\r\n\r\n' >&0; grep -q '200 OK'; } 0<>/dev/tcp/localhost/9000
+      HealthInterval=10s
+      # First start builds the Quarkus config and the DB schema; probe
+      # failures during that window must not count towards unhealthy.
+      HealthStartPeriod=120s
+      Notify=healthy
+
+      [Service]
+      Restart=on-failure
+      # Generous: the first start includes the auto-build and schema
+      # init, and systemd only gets READY once the probe passes.
+      TimeoutStartSec=300
+
+      [Install]
+      WantedBy=default.target
+  register: keycloak_quadlet_unit
+
+# daemon_reload makes the Quadlet generator re-render the unit before
+# systemd acts on it. Restart only when the unit or the secret actually
+# changed — a plain re-run must not bounce the IdP.
+- name: Reload systemd and start Keycloak
+  become: true
+  become_user: "{{ keycloak_service_user }}"
+  environment:
+    XDG_RUNTIME_DIR: "{{ keycloak_runtime_dir }}"
+  ansible.builtin.systemd_service:
+    name: keycloak.service
+    scope: user
+    daemon_reload: true
+    state: >-
+      {{ 'restarted'
+         if keycloak_quadlet_unit is changed
+            or keycloak_secret_created is changed
+         else 'started' }}

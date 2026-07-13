@@ -1,0 +1,95 @@
+---
+# keycloak/tasks/verify.yml — Prove it the way the platform will use
+# it: the unit answers, the realm is served, and a FreeIPA-only user
+# can obtain a token — the full Keycloak -> 389-ds bind path. Runs
+# entirely against the VM loopback and only needs the vault, so
+# `--tags verify` works standalone like the other roles.
+- name: Wait for Keycloak to listen on the VM loopback
+  ansible.builtin.wait_for:
+    host: "{{ keycloak_listen_address }}"
+    port: "{{ keycloak_http_port }}"
+    timeout: 60
+
+- name: Fetch the realm's OIDC discovery document
+  ansible.builtin.uri:
+    url: >-
+      {{ keycloak_base_url }}/realms/{{ keycloak_realm
+      }}/.well-known/openid-configuration
+    return_content: true
+  register: keycloak_discovery
+
+- name: Assert the platform realm is served
+  ansible.builtin.assert:
+    that:
+      - keycloak_discovery.json.issuer is search('/realms/' ~ keycloak_realm ~ '$')
+    fail_msg: >-
+      Keycloak answered but the discovery document does not belong to
+      the '{{ keycloak_realm }}' realm — the realm was not created.
+
+# alice exists only in FreeIPA (hbac_setup, M1.5), so a password grant
+# for her exercises the LDAP bind against 389-ds end to end — and
+# triggers her on-demand import into the realm. admin-cli is a public
+# client with direct access grants enabled by default in every new
+# realm. HBAC does not gate this: HBAC rules control PAM access on
+# enrolled hosts, not LDAP simple binds (ADR-0006 spells this out).
+- name: Obtain a token as a federated FreeIPA user
+  ansible.builtin.uri:
+    url: >-
+      {{ keycloak_base_url }}/realms/{{ keycloak_realm
+      }}/protocol/openid-connect/token
+    method: POST
+    body_format: form-urlencoded
+    body:
+      grant_type: password
+      client_id: admin-cli
+      username: "{{ keycloak_verify_user }}"
+      password: "{{ keycloak_verify_password }}"
+  register: keycloak_verify_token
+  changed_when: false
+  no_log: true
+
+- name: Assert the federated login produced a token
+  ansible.builtin.assert:
+    that:
+      - keycloak_verify_token.json.access_token is defined
+    fail_msg: >-
+      Keycloak is up but did not issue a token for
+      '{{ keycloak_verify_user }}' — the LDAP federation to FreeIPA is
+      not answering logins (check the bind DN/credential and users DN).
+
+# Belt and braces: the login above must have come through the LDAP
+# provider, not from a local Keycloak account sharing the name.
+- name: Obtain an admin API token for the federation check
+  ansible.builtin.uri:
+    url: "{{ keycloak_base_url }}/realms/master/protocol/openid-connect/token"
+    method: POST
+    body_format: form-urlencoded
+    body:
+      grant_type: password
+      client_id: admin-cli
+      username: "{{ keycloak_admin_user }}"
+      password: "{{ keycloak_admin_password }}"
+  register: keycloak_verify_admin_token
+  changed_when: false
+  no_log: true
+
+- name: Look up the verify user in the realm
+  ansible.builtin.uri:
+    url: >-
+      {{ keycloak_base_url }}/admin/realms/{{ keycloak_realm
+      }}/users?username={{ keycloak_verify_user }}&exact=true
+    headers:
+      Authorization: >-
+        Bearer {{ keycloak_verify_admin_token.json.access_token }}
+  register: keycloak_verify_lookup
+  changed_when: false
+  no_log: true
+
+- name: Assert the verify user is an LDAP-federated import
+  ansible.builtin.assert:
+    that:
+      - keycloak_verify_lookup.json | length == 1
+      - keycloak_verify_lookup.json[0].federationLink is defined
+    fail_msg: >-
+      '{{ keycloak_verify_user }}' exists in the realm but carries no
+      federationLink — it is a local account, not the FreeIPA import.

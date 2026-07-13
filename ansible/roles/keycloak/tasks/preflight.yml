@@ -1,0 +1,31 @@
+---
+# keycloak/tasks/preflight.yml — Fail fast: no vault, no database, no
+# run. The LDAP bind reuses the IPA admin password, so both vault
+# variables must be real (ADR-0006 lists the shared account as a lab
+# shortcut).
+- name: Assert vault secrets are loaded and not placeholders
+  ansible.builtin.assert:
+    that:
+      - vault_keycloak_admin_password is defined
+      - vault_keycloak_admin_password is not search("CHANGE_ME")
+      - vault_freeipa_admin_password is defined
+      - vault_freeipa_admin_password is not search("CHANGE_ME")
+    fail_msg: >-
+      Vault variables missing or still placeholders. Create ansible/vault.yml
+      from ansible/vault.example.yml and encrypt it (see ansible/README.md).
+
+# The postgresql role (M3.1) owns the pieces this role builds on: the
+# rootless service account, the idp network and the database itself.
+# getent fails loudly if the account is missing — run that role first.
+- name: Assert the postgresql role ran (service account exists)
+  ansible.builtin.getent:
+    database: passwd
+    key: "{{ keycloak_service_user }}"
+
+# Same publish PostgreSQL's own verify uses: the loopback port proves
+# the database is answering before Keycloak gets pointed at it.
+- name: Assert the postgresql role ran (database is answering)
+  ansible.builtin.wait_for:
+    host: 127.0.0.1
+    port: "{{ keycloak_db_port }}"
+    timeout: 10
